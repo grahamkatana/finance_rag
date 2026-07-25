@@ -78,3 +78,28 @@ Content-Type: application/json
 {
   "query": "How much cash did Apple have at end of 2024?"
 }
+
+### Upload Apple 10-K (full document)
+POST http://localhost:8000/api/v1/ingestion/upload
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="source"
+
+https://investor.apple.com
+--boundary
+Content-Disposition: form-data; name="file"; filename="10-Q4-2024-As-Filed.pdf"
+Content-Type: application/pdf
+
+< ./storage/documents/10-Q4-2024-As-Filed.pdf
+--boundary--
+
+###
+
+### List all ingested documents
+GET http://localhost:8000/api/v1/ingestion/documents
+
+###
+
+### Delete a document
+DELETE http://localhost:8000/api/v1/ingestion/documents/finance_test.pdf
