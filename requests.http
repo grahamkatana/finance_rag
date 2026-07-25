@@ -1,0 +1,80 @@
+### Health Check
+GET http://localhost:8000/health
+
+###
+
+### Upload PDF from storage/documents
+POST http://localhost:8000/api/v1/ingestion/upload
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="source"
+
+local-test
+--boundary
+Content-Disposition: form-data; name="file"; filename="finance_test.pdf"
+Content-Type: application/pdf
+
+< ./storage/documents/finance_test.pdf
+--boundary--
+
+###
+
+### Search chunks only (no generation)
+POST http://localhost:8000/api/v1/retrieval/search
+Content-Type: application/json
+
+{
+  "query": "What was Apple total net sales in 2024?",
+  "top_n": 3
+}
+
+###
+
+### Generate — net sales
+POST http://localhost:8000/api/v1/generation/generate
+Content-Type: application/json
+
+{
+  "query": "What was Apple total net sales in 2024?"
+}
+
+###
+
+### Generate — services revenue
+POST http://localhost:8000/api/v1/generation/generate
+Content-Type: application/json
+
+{
+  "query": "What was Apple services revenue in 2024?"
+}
+
+###
+
+### Generate — China revenue
+POST http://localhost:8000/api/v1/generation/generate
+Content-Type: application/json
+
+{
+  "query": "How much revenue did Apple generate in Greater China?"
+}
+
+###
+
+### Generate — net income
+POST http://localhost:8000/api/v1/generation/generate
+Content-Type: application/json
+
+{
+  "query": "What was Apple net income in fiscal year 2024?"
+}
+
+###
+
+### Generate — cash position
+POST http://localhost:8000/api/v1/generation/generate
+Content-Type: application/json
+
+{
+  "query": "How much cash did Apple have at end of 2024?"
+}

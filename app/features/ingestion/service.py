@@ -1,21 +1,20 @@
 import uuid
+from io import BytesIO
+from typing import AsyncGenerator
 
 from pypdf import PdfReader
-from io import BytesIO
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import PointStruct
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.logging import logger
 from app.features.ingestion.chunker import Chunker
 from app.features.ingestion.embedder import Embedder
 
 
 def extract_text(file_bytes: bytes) -> str:
-    """
-    Extract raw text from PDF bytes using pypdf.
-    """
     reader = PdfReader(BytesIO(file_bytes))
     pages = []
     for page in reader.pages:
@@ -29,6 +28,7 @@ class IngestionService:
     def __init__(self, db: AsyncSession, qdrant: AsyncQdrantClient):
         self.db = db
         self.qdrant = qdrant
+        self.log = logger.getChild("ingestion")
 
     async def ingest(
         self,
@@ -36,30 +36,56 @@ class IngestionService:
         file_name: str,
         source: str,
     ) -> dict:
-        # 1. Extract text from PDF
+        async for event in self.ingest_with_progress(
+            file_bytes=file_bytes,
+            file_name=file_name,
+            source=source,
+        ):
+            if event["status"] == "done":
+                return {
+                    "file_name": event["file_name"],
+                    "chunks_ingested": event["chunks_ingested"],
+                    "source": event["source"],
+                }
+        raise ValueError("Ingestion failed")
+
+    async def ingest_with_progress(
+        self,
+        file_bytes: bytes,
+        file_name: str,
+        source: str,
+    ) -> AsyncGenerator[dict, None]:
+        self.log.info(f"Starting ingestion: {file_name}")
+        yield {"status": "extracting", "message": f"Extracting text from {file_name}..."}
+
         raw_text = extract_text(file_bytes)
         if not raw_text.strip():
+            self.log.error(f"No text extracted from {file_name}")
             raise ValueError("No text could be extracted from this PDF")
 
-        # 2. Chunk the text
+        self.log.info(f"Extracted {len(raw_text)} characters from {file_name}")
+        yield {"status": "chunking", "message": f"Extracted {len(raw_text)} characters, chunking..."}
+
         chunker = Chunker()
         chunks = chunker.chunk(raw_text)
         if not chunks:
             raise ValueError("No text could be extracted from this PDF")
 
-        # 3. Embed all chunks in one batch call
+        self.log.info(f"Created {len(chunks)} chunks from {file_name}")
+        yield {"status": "embedding", "message": f"Embedding {len(chunks)} chunks...", "total": len(chunks)}
+
         embedder = Embedder()
         texts = [chunk.text for chunk in chunks]
         vectors = await embedder.embed_batch(texts)
 
-        # 4. Build Qdrant points
+        self.log.info(f"Embedding complete for {file_name}")
+        yield {"status": "storing", "message": f"Storing {len(chunks)} vectors in Qdrant..."}
+
         points = []
         qdrant_ids = []
-
         for chunk, vector in zip(chunks, vectors):
             qdrant_id = str(uuid.uuid4())
             qdrant_ids.append(qdrant_id)
-
             points.append(PointStruct(
                 id=qdrant_id,
                 vector=vector,
@@ -70,31 +96,30 @@ class IngestionService:
                 },
             ))
 
-        # 5. Upsert vectors into Qdrant
         await self.qdrant.upsert(
             collection_name=settings.qdrant_collection,
             points=points,
         )
 
-        # 6. Store metadata + tsvector in Postgres
-        for chunk, qdrant_id in zip(chunks, qdrant_ids):
+        self.log.info("Qdrant upsert complete")
+        yield {"status": "saving", "message": "Saving metadata to Postgres..."}
+
+        for i, (chunk, qdrant_id) in enumerate(zip(chunks, qdrant_ids)):
+            if i % 10 == 0:
+                yield {
+                    "status": "saving",
+                    "message": f"Writing chunks to Postgres...",
+                    "progress": i,
+                    "total": len(chunks),
+                }
             await self.db.execute(
                 text("""
                     INSERT INTO documents (
-                        file_name,
-                        file_type,
-                        source,
-                        chunk_text,
-                        chunk_index,
-                        qdrant_id,
-                        fts_vector
+                        file_name, file_type, source,
+                        chunk_text, chunk_index, qdrant_id, fts_vector
                     ) VALUES (
-                        :file_name,
-                        :file_type,
-                        :source,
-                        :chunk_text,
-                        :chunk_index,
-                        :qdrant_id,
+                        :file_name, :file_type, :source,
+                        :chunk_text, :chunk_index, :qdrant_id,
                         to_tsvector('english', :chunk_text)
                     )
                 """),
@@ -109,8 +134,11 @@ class IngestionService:
             )
 
         await self.db.commit()
+        self.log.info(f"Ingestion complete: {file_name} — {len(chunks)} chunks stored")
 
-        return {
+        yield {
+            "status": "done",
+            "message": f"Ingestion complete",
             "file_name": file_name,
             "chunks_ingested": len(chunks),
             "source": source,

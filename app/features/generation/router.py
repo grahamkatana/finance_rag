@@ -14,31 +14,9 @@ from app.features.generation.service import GenerationService
 router = APIRouter(prefix="/api/v1/generation", tags=["generation"])
 
 
-# 1. Request schema
 class GenerateRequest(BaseModel):
     query: str = Field(..., min_length=1)
     top_n: int = Field(default=5, ge=1, le=20)
-
-
-# 2. Stream wrapper
-async def token_stream(
-    query: str,
-    top_n: int,
-    db: AsyncSession,
-    qdrant: AsyncQdrantClient,
-) -> AsyncGenerator[str, None]:
-    """
-    Full RAG pipeline as an async generator:
-    retrieve → build prompt → stream tokens
-    """
-    # Step 1: Retrieve relevant chunks
-    retrieval_service = RetrievalService(db=db, qdrant=qdrant)
-    chunks = await retrieval_service.search(query=query, top_n=top_n)
-
-    # Step 2: Stream generation over retrieved chunks
-    generation_service = GenerationService()
-    async for token in generation_service.stream(query=query, chunks=chunks):
-        yield token
 
 
 @router.post("/generate")
@@ -47,12 +25,25 @@ async def generate(
     db: AsyncSession = Depends(get_db),
     qdrant: AsyncQdrantClient = Depends(get_qdrant),
 ):
-    return StreamingResponse(
-        token_stream(
+    # 1. Do retrieval BEFORE streaming starts
+    # so DB session is still open and valid
+    retrieval_service = RetrievalService(db=db, qdrant=qdrant)
+    chunks = await retrieval_service.search(
+        query=request.query,
+        top_n=request.top_n,
+    )
+
+    # 2. Build stream generator with chunks already retrieved
+    async def stream_tokens() -> AsyncGenerator[str, None]:
+        generation_service = GenerationService()
+        async for token in generation_service.stream(
             query=request.query,
-            top_n=request.top_n,
-            db=db,
-            qdrant=qdrant,
-        ),
+            chunks=chunks,
+        ):
+            yield token
+
+    # 3. Stream only the generation — no DB access inside
+    return StreamingResponse(
+        stream_tokens(),
         media_type="text/plain",
     )

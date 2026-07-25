@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.core.logging import logger
 from app.core.qdrant import init_qdrant
 from app.features.ingestion.router import router as ingestion_router
 from app.features.retrieval.router import router as retrieval_router
@@ -10,8 +11,11 @@ from app.features.generation.router import router as generation_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("Starting Finance RAG API...")
     await init_qdrant()
+    logger.info("Qdrant initialized")
     yield
+    logger.info("Shutting down Finance RAG API...")
 
 
 app = FastAPI(

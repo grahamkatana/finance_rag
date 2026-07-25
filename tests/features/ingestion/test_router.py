@@ -4,17 +4,19 @@ from unittest.mock import AsyncMock, patch
 from app.main import app
 
 
+async def fake_progress(*args, **kwargs):
+    yield {"status": "extracting", "message": "Extracting..."}
+    yield {"status": "embedding", "message": "Embedding 2 chunks...", "total": 2}
+    yield {"status": "done", "file_name": "apple_10k.pdf", "chunks_ingested": 42, "source": "https://sec.gov/apple"}
+
+
 @pytest.fixture
 def mock_ingest_service():
     with patch(
         "app.features.ingestion.router.IngestionService"
     ) as mock_cls:
         mock_service = AsyncMock()
-        mock_service.ingest.return_value = {
-            "file_name": "apple_10k.pdf",
-            "chunks_ingested": 42,
-            "source": "https://sec.gov/apple",
-        }
+        mock_service.ingest_with_progress = fake_progress
         mock_cls.return_value = mock_service
         yield mock_service
 
@@ -41,8 +43,6 @@ async def test_upload_pdf_returns_200(mock_ingest_service, mock_deps):
             data={"source": "https://sec.gov/apple"},
         )
     assert response.status_code == 200
-    assert response.json()["chunks_ingested"] == 42
-    assert response.json()["file_name"] == "apple_10k.pdf"
 
 
 @pytest.mark.asyncio
@@ -76,8 +76,8 @@ async def test_upload_missing_file_returns_422(mock_deps):
 
 
 @pytest.mark.asyncio
-async def test_upload_returns_correct_schema(mock_ingest_service, mock_deps):
-    """Response must contain all expected fields"""
+async def test_upload_streams_progress_events(mock_ingest_service, mock_deps):
+    """Response should contain SSE progress events"""
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test"
@@ -87,7 +87,21 @@ async def test_upload_returns_correct_schema(mock_ingest_service, mock_deps):
             files={"file": ("apple_10k.pdf", b"%PDF-1.4 mock", "application/pdf")},
             data={"source": "https://sec.gov/apple"},
         )
-    data = response.json()
-    assert "file_name" in data
-    assert "chunks_ingested" in data
-    assert "source" in data
+    assert "extracting" in response.text
+    assert "done" in response.text
+
+
+@pytest.mark.asyncio
+async def test_upload_streams_done_event(mock_ingest_service, mock_deps):
+    """Final SSE event must contain done status with chunk count"""
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/api/v1/ingestion/upload",
+            files={"file": ("apple_10k.pdf", b"%PDF-1.4 mock", "application/pdf")},
+            data={"source": "https://sec.gov/apple"},
+        )
+    assert "chunks_ingested" in response.text
+    assert "apple_10k.pdf" in response.text

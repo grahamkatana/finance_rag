@@ -23,7 +23,7 @@ def service(mock_db, mock_qdrant):
 
 @pytest.fixture
 def mock_qdrant_hits():
-    """Simulated Qdrant search hits"""
+    """Simulated Qdrant query_points hits"""
     hit1 = MagicMock()
     hit1.id = "uuid-a"
     hit1.score = 0.95
@@ -32,7 +32,6 @@ def mock_qdrant_hits():
         "chunk_index": 1,
         "source": "sec.gov",
     }
-
     hit2 = MagicMock()
     hit2.id = "uuid-b"
     hit2.score = 0.87
@@ -76,6 +75,24 @@ def mock_chunk_rows():
     return [row1, row2]
 
 
+def _setup_qdrant_mock(service, mock_qdrant_hits):
+    """Helper to setup qdrant query_points mock"""
+    mock_response = MagicMock()
+    mock_response.points = mock_qdrant_hits
+    service.qdrant.query_points = AsyncMock(return_value=mock_response)
+
+
+def _setup_db_mock(service, mock_pg_rows, mock_chunk_rows):
+    """Helper to setup db execute mock"""
+    mock_execute = AsyncMock()
+    mock_result_pg = MagicMock()
+    mock_result_pg.fetchall.return_value = mock_pg_rows
+    mock_result_chunks = MagicMock()
+    mock_result_chunks.fetchall.return_value = mock_chunk_rows
+    mock_execute.side_effect = [mock_result_pg, mock_result_chunks]
+    service.db.execute = mock_execute
+
+
 @pytest.mark.asyncio
 async def test_search_returns_list(
     service, mock_qdrant_hits, mock_pg_rows, mock_chunk_rows
@@ -86,15 +103,8 @@ async def test_search_returns_list(
         mock_embedder.embed_text.return_value = [0.1] * 768
         mock_embedder_cls.return_value = mock_embedder
 
-        service.qdrant.search.return_value = mock_qdrant_hits
-
-        mock_execute = AsyncMock()
-        mock_result_pg = MagicMock()
-        mock_result_pg.fetchall.return_value = mock_pg_rows
-        mock_result_chunks = MagicMock()
-        mock_result_chunks.fetchall.return_value = mock_chunk_rows
-        mock_execute.side_effect = [mock_result_pg, mock_result_chunks]
-        service.db.execute = mock_execute
+        _setup_qdrant_mock(service, mock_qdrant_hits)
+        _setup_db_mock(service, mock_pg_rows, mock_chunk_rows)
 
         results = await service.search(query="Apple revenue Q3")
         assert isinstance(results, list)
@@ -110,15 +120,8 @@ async def test_search_returns_correct_fields(
         mock_embedder.embed_text.return_value = [0.1] * 768
         mock_embedder_cls.return_value = mock_embedder
 
-        service.qdrant.search.return_value = mock_qdrant_hits
-
-        mock_execute = AsyncMock()
-        mock_result_pg = MagicMock()
-        mock_result_pg.fetchall.return_value = mock_pg_rows
-        mock_result_chunks = MagicMock()
-        mock_result_chunks.fetchall.return_value = mock_chunk_rows
-        mock_execute.side_effect = [mock_result_pg, mock_result_chunks]
-        service.db.execute = mock_execute
+        _setup_qdrant_mock(service, mock_qdrant_hits)
+        _setup_db_mock(service, mock_pg_rows, mock_chunk_rows)
 
         results = await service.search(query="Apple revenue Q3")
         for result in results:
@@ -132,24 +135,17 @@ async def test_search_returns_correct_fields(
 async def test_search_calls_qdrant(
     service, mock_qdrant_hits, mock_pg_rows, mock_chunk_rows
 ):
-    """Qdrant search must be called with a vector"""
+    """Qdrant query_points must be called with a vector"""
     with patch("app.features.retrieval.service.Embedder") as mock_embedder_cls:
         mock_embedder = AsyncMock()
         mock_embedder.embed_text.return_value = [0.1] * 768
         mock_embedder_cls.return_value = mock_embedder
 
-        service.qdrant.search.return_value = mock_qdrant_hits
-
-        mock_execute = AsyncMock()
-        mock_result_pg = MagicMock()
-        mock_result_pg.fetchall.return_value = mock_pg_rows
-        mock_result_chunks = MagicMock()
-        mock_result_chunks.fetchall.return_value = mock_chunk_rows
-        mock_execute.side_effect = [mock_result_pg, mock_result_chunks]
-        service.db.execute = mock_execute
+        _setup_qdrant_mock(service, mock_qdrant_hits)
+        _setup_db_mock(service, mock_pg_rows, mock_chunk_rows)
 
         await service.search(query="Apple revenue Q3")
-        assert service.qdrant.search.called
+        assert service.qdrant.query_points.called
 
 
 @pytest.mark.asyncio
@@ -162,15 +158,8 @@ async def test_search_calls_postgres(
         mock_embedder.embed_text.return_value = [0.1] * 768
         mock_embedder_cls.return_value = mock_embedder
 
-        service.qdrant.search.return_value = mock_qdrant_hits
-
-        mock_execute = AsyncMock()
-        mock_result_pg = MagicMock()
-        mock_result_pg.fetchall.return_value = mock_pg_rows
-        mock_result_chunks = MagicMock()
-        mock_result_chunks.fetchall.return_value = mock_chunk_rows
-        mock_execute.side_effect = [mock_result_pg, mock_result_chunks]
-        service.db.execute = mock_execute
+        _setup_qdrant_mock(service, mock_qdrant_hits)
+        _setup_db_mock(service, mock_pg_rows, mock_chunk_rows)
 
         await service.search(query="Apple revenue Q3")
         assert service.db.execute.called
@@ -193,15 +182,8 @@ async def test_search_top_n_respected(
         mock_embedder.embed_text.return_value = [0.1] * 768
         mock_embedder_cls.return_value = mock_embedder
 
-        service.qdrant.search.return_value = mock_qdrant_hits
-
-        mock_execute = AsyncMock()
-        mock_result_pg = MagicMock()
-        mock_result_pg.fetchall.return_value = mock_pg_rows
-        mock_result_chunks = MagicMock()
-        mock_result_chunks.fetchall.return_value = mock_chunk_rows
-        mock_execute.side_effect = [mock_result_pg, mock_result_chunks]
-        service.db.execute = mock_execute
+        _setup_qdrant_mock(service, mock_qdrant_hits)
+        _setup_db_mock(service, mock_pg_rows, mock_chunk_rows)
 
         results = await service.search(query="Apple revenue Q3", top_n=1)
         assert len(results) <= 1
