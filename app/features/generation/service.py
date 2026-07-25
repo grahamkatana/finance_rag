@@ -34,9 +34,15 @@ Answer:"""
 
         return f"""You are a financial analyst assistant.
 Answer the question using ONLY the context provided below.
-If the answer is not in the context, say "I could not find that information in the provided documents."
-Do not make up numbers, dates, or facts.
-Always cite which source you used.
+
+Important instructions:
+- The context may contain financial tables where numbers appear in columns representing different fiscal years.
+- For Apple 10-K filings the columns are always in this order: 2024, 2023, 2022 (left to right).
+- When you see a row like "Total net sales 391,035 383,285 394,328" it means: 2024=$391,035M, 2023=$383,285M, 2022=$394,328M.
+- Numbers are in millions of dollars unless stated otherwise.
+- If the answer is not in the context say "I could not find that information in the provided documents."
+- Do not make up numbers, dates, or facts.
+- Always cite which source you used by mentioning the source number.
 
 Context:
 {context}
@@ -52,7 +58,6 @@ Answer:"""
     ) -> AsyncGenerator[str, None]:
         prompt = self.build_prompt(query=query, chunks=chunks)
 
-        # Client created here so tests can patch it
         client = ollama.AsyncClient(host=self.base_url)
 
         response = await client.chat(

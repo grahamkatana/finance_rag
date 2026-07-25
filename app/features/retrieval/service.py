@@ -1,11 +1,11 @@
-import asyncio
+import time
 
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.logging import logger
 from app.features.ingestion.embedder import Embedder
 from app.features.retrieval.hybrid import SearchResult, reciprocal_rank_fusion
 
@@ -14,6 +14,7 @@ class RetrievalService:
     def __init__(self, db: AsyncSession, qdrant: AsyncQdrantClient):
         self.db = db
         self.qdrant = qdrant
+        self.log = logger.getChild("retrieval")
 
     async def search(
         self,
@@ -23,13 +24,18 @@ class RetrievalService:
         if not query.strip():
             raise ValueError("Query cannot be empty")
 
+        t0 = time.perf_counter()
         embedder = Embedder()
         query_vector = await embedder.embed_text(query)
+        self.log.info(f"Query embedding took {time.perf_counter() - t0:.2f}s")
 
-        # Run both searches — Qdrant and Postgres separately
-        # (not in gather to avoid session conflicts)
+        t1 = time.perf_counter()
         qdrant_results = await self._search_qdrant(query_vector, limit=10)
+        self.log.info(f"Qdrant search took {time.perf_counter() - t1:.2f}s")
+
+        t2 = time.perf_counter()
         postgres_results = await self._search_postgres(query, limit=10)
+        self.log.info(f"Postgres search took {time.perf_counter() - t2:.2f}s")
 
         fused = reciprocal_rank_fusion(
             qdrant_results,
@@ -40,7 +46,11 @@ class RetrievalService:
         if not fused:
             return []
 
+        t3 = time.perf_counter()
         chunks = await self._fetch_chunks(fused)
+        self.log.info(f"Chunk fetch took {time.perf_counter() - t3:.2f}s")
+        self.log.info(f"Total retrieval took {time.perf_counter() - t0:.2f}s")
+
         return chunks
 
     async def _search_qdrant(
@@ -48,10 +58,6 @@ class RetrievalService:
         query_vector: list[float],
         limit: int,
     ) -> list[SearchResult]:
-        """
-        Dense semantic search — updated for new qdrant-client API.
-        query_points replaces the deprecated search method.
-        """
         response = await self.qdrant.query_points(
             collection_name=settings.qdrant_collection,
             query=query_vector,
