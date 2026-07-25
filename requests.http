@@ -103,3 +103,23 @@ GET http://localhost:8000/api/v1/ingestion/documents
 
 ### Delete a document
 DELETE http://localhost:8000/api/v1/ingestion/documents/finance_test.pdf
+
+### Evaluate RAG answer
+POST http://localhost:8000/api/v1/generation/eval
+Content-Type: application/json
+
+{
+  "query": "What was Apple total net sales in 2024?",
+  "answer": "Apple reported total net sales of 391 billion dollars in fiscal year 2024."
+}
+
+###
+
+### Evaluate hallucinated answer
+POST http://localhost:8000/api/v1/generation/eval
+Content-Type: application/json
+
+{
+  "query": "What was Apple total net sales in 2024?",
+  "answer": "Apple reported net sales of 800 billion dollars and acquired Tesla in 2024."
+}

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     ollama_base_url: str
     ollama_llm_model: str
     ollama_embed_model: str
+    ollama_judge_model: str
 
     #Embedding 
     embedding_size: int
