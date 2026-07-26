@@ -327,3 +327,12 @@ Content-Type: application/json
 {
   "query": "What was Apple total net sales in fiscal year 2024? The answer should be in the financial statements as Total net sales."
 }
+
+### Generate — total net sales (with audit)
+POST http://localhost:8000/api/v1/generation/generate
+Content-Type: application/json
+
+{
+  "query": "What was Apple total net sales in fiscal year 2024?",
+  "client_id": "graham-test"
+}
