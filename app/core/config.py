@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     postgres_db: str
     postgres_host: str
     postgres_port: int
+    
+    # Redis
+    redis_url: str
 
     # Qdrant
     qdrant_host: str
