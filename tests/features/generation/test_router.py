@@ -69,10 +69,7 @@ async def test_generate_returns_200(
     ) as client:
         response = await client.post(
             "/api/v1/generation/generate",
-            json={
-                "query": "What was Apple revenue in Q3?",
-                "client_id": "test-user",
-            },
+            json={"query": "What was Apple revenue in Q3?"},
         )
     assert response.status_code == 200
 
@@ -88,10 +85,7 @@ async def test_generate_returns_streamed_content(
     ) as client:
         response = await client.post(
             "/api/v1/generation/generate",
-            json={
-                "query": "What was Apple revenue in Q3?",
-                "client_id": "test-user",
-            },
+            json={"query": "What was Apple revenue in Q3?"},
         )
     assert "Apple" in response.text
 
@@ -107,10 +101,7 @@ async def test_generate_content_type_is_text(
     ) as client:
         response = await client.post(
             "/api/v1/generation/generate",
-            json={
-                "query": "What was Apple revenue in Q3?",
-                "client_id": "test-user",
-            },
+            json={"query": "What was Apple revenue in Q3?"},
         )
     assert "text/plain" in response.headers["content-type"]
 
@@ -124,10 +115,7 @@ async def test_generate_empty_query_returns_422(mock_audit, mock_deps):
     ) as client:
         response = await client.post(
             "/api/v1/generation/generate",
-            json={
-                "query": "",
-                "client_id": "test-user",
-            },
+            json={"query": ""},
         )
     assert response.status_code == 422
 
@@ -141,7 +129,7 @@ async def test_generate_missing_query_returns_422(mock_audit, mock_deps):
     ) as client:
         response = await client.post(
             "/api/v1/generation/generate",
-            json={"client_id": "test-user"},
+            json={},
         )
     assert response.status_code == 422
 
@@ -157,10 +145,7 @@ async def test_generate_calls_retrieval_first(
     ) as client:
         await client.post(
             "/api/v1/generation/generate",
-            json={
-                "query": "What was Apple revenue in Q3?",
-                "client_id": "test-user",
-            },
+            json={"query": "What was Apple revenue in Q3?"},
         )
     assert mock_retrieval_service.search.called
 
@@ -176,10 +161,7 @@ async def test_generate_fires_audit_task(
     ) as client:
         await client.post(
             "/api/v1/generation/generate",
-            json={
-                "query": "What was Apple revenue in Q3?",
-                "client_id": "test-user",
-            },
+            json={"query": "What was Apple revenue in Q3?"},
         )
     assert mock_audit.delay.called
 
@@ -188,27 +170,7 @@ async def test_generate_fires_audit_task(
 async def test_generate_audit_receives_client_id(
     mock_retrieval_service, mock_generation_service, mock_audit, mock_deps
 ):
-    """Audit task must receive the client_id"""
-    async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test"
-    ) as client:
-        await client.post(
-            "/api/v1/generation/generate",
-            json={
-                "query": "What was Apple revenue in Q3?",
-                "client_id": "graham-test",
-            },
-        )
-    call_kwargs = mock_audit.delay.call_args.kwargs
-    assert call_kwargs["client_id"] == "graham-test"
-
-
-@pytest.mark.asyncio
-async def test_generate_default_client_id(
-    mock_retrieval_service, mock_generation_service, mock_audit, mock_deps
-):
-    """client_id should default to anonymous if not provided"""
+    """Audit task must receive client_id from JWT sub claim"""
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test"
@@ -218,4 +180,21 @@ async def test_generate_default_client_id(
             json={"query": "What was Apple revenue in Q3?"},
         )
     call_kwargs = mock_audit.delay.call_args.kwargs
-    assert call_kwargs["client_id"] == "anonymous"
+    assert call_kwargs["client_id"] == "test-user-id-123"
+
+
+@pytest.mark.asyncio
+async def test_generate_default_client_id(
+    mock_retrieval_service, mock_generation_service, mock_audit, mock_deps
+):
+    """client_id always comes from JWT sub — never anonymous"""
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test"
+    ) as client:
+        await client.post(
+            "/api/v1/generation/generate",
+            json={"query": "What was Apple revenue in Q3?"},
+        )
+    call_kwargs = mock_audit.delay.call_args.kwargs
+    assert call_kwargs["client_id"] == "test-user-id-123"

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from qdrant_client import AsyncQdrantClient
 
+from app.core.auth import TokenUser, get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.qdrant import get_qdrant
@@ -23,7 +24,6 @@ log = logger.getChild("generation.router")
 class GenerateRequest(BaseModel):
     query: str = Field(..., min_length=1)
     top_n: int = Field(default=5, ge=1, le=20)
-    client_id: str = Field(default="anonymous")
 
 
 async def stream_and_audit(
@@ -33,17 +33,11 @@ async def stream_and_audit(
     db: AsyncSession,
     qdrant: AsyncQdrantClient,
 ) -> AsyncGenerator[str, None]:
-    """
-    Streams tokens to client while collecting
-    the full answer for background audit.
-    """
     t0 = time.perf_counter()
 
-    # 1. Retrieve chunks
     retrieval_service = RetrievalService(db=db, qdrant=qdrant)
     chunks = await retrieval_service.search(query=query, top_n=top_n)
 
-    # 2. Stream generation + collect full answer
     generation_service = GenerationService()
     full_answer = []
 
@@ -54,7 +48,6 @@ async def stream_and_audit(
         full_answer.append(token)
         yield token
 
-    # 3. Fire audit task AFTER stream completes
     duration_ms = (time.perf_counter() - t0) * 1000
     answer = "".join(full_answer)
 
@@ -75,12 +68,13 @@ async def generate(
     request: GenerateRequest,
     db: AsyncSession = Depends(get_db),
     qdrant: AsyncQdrantClient = Depends(get_qdrant),
+    current_user: TokenUser = Depends(get_current_user),
 ):
     return StreamingResponse(
         stream_and_audit(
             query=request.query,
             top_n=request.top_n,
-            client_id=request.client_id,
+            client_id=current_user.sub,
             db=db,
             qdrant=qdrant,
         ),

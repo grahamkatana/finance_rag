@@ -9,6 +9,12 @@ class Settings(BaseSettings):
     postgres_host: str
     postgres_port: int
     
+    # Authentik
+    authentik_jwks_uri: str
+    authentik_issuer: str
+    authentik_client_id: str
+    authentik_client_secret: str
+    
     # Redis
     redis_url: str
 
