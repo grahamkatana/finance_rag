@@ -8,6 +8,7 @@ from app.features.ingestion.router import router as ingestion_router
 from app.features.retrieval.router import router as retrieval_router
 from app.features.generation.router import router as generation_router
 from app.features.generation.eval_router import router as eval_router
+from app.features.audit.router import router as audit_router
 
 
 @asynccontextmanager
@@ -29,6 +30,7 @@ app.include_router(ingestion_router)
 app.include_router(retrieval_router)
 app.include_router(generation_router)
 app.include_router(eval_router)
+app.include_router(audit_router)
 
 
 @app.get("/health")

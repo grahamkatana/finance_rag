@@ -1,4 +1,7 @@
+import math
+
 import pytest
+
 from app.features.ingestion.embedder import Embedder
 
 
@@ -18,9 +21,10 @@ async def test_embed_single_text_returns_vector(embedder):
 
 @pytest.mark.asyncio
 async def test_embed_returns_correct_dimensions(embedder):
-    """nomic-embed-text always returns 768 dimensions"""
+    """Embedding dimensions must match config EMBEDDING_SIZE"""
+    from app.core.config import settings
     vector = await embedder.embed_text("Apple revenue grew 12% in Q3.")
-    assert len(vector) == 768
+    assert len(vector) == settings.embedding_size
 
 
 @pytest.mark.asyncio
@@ -37,13 +41,14 @@ async def test_embed_batch_returns_multiple_vectors(embedder):
 
 @pytest.mark.asyncio
 async def test_embed_batch_all_correct_dimensions(embedder):
-    """Every vector in batch must be 768 dimensions"""
+    """Every vector in batch must match config EMBEDDING_SIZE"""
+    from app.core.config import settings
     texts = [
         "Apple revenue grew 12% in Q3.",
         "Tesla reported record deliveries.",
     ]
     vectors = await embedder.embed_batch(texts)
-    assert all(len(v) == 768 for v in vectors)
+    assert all(len(v) == settings.embedding_size for v in vectors)
 
 
 @pytest.mark.asyncio
@@ -52,8 +57,6 @@ async def test_similar_texts_produce_similar_vectors(embedder):
     Semantically similar texts should have high cosine similarity.
     This confirms the embedding model is working meaningfully.
     """
-    import math
-
     v1 = await embedder.embed_text("Apple quarterly revenue report.")
     v2 = await embedder.embed_text("Apple earnings for the quarter.")
     v3 = await embedder.embed_text("The weather is sunny today.")
@@ -67,5 +70,4 @@ async def test_similar_texts_produce_similar_vectors(embedder):
     similar_score = cosine_similarity(v1, v2)
     different_score = cosine_similarity(v1, v3)
 
-    # Similar financial texts should score higher than unrelated text
     assert similar_score > different_score

@@ -336,3 +336,35 @@ Content-Type: application/json
   "query": "What was Apple total net sales in fiscal year 2024?",
   "client_id": "graham-test"
 }
+
+### ============================================================
+### AUDIT
+### ============================================================
+
+### Get all query audit events
+GET http://localhost:8000/api/v1/audit/queries
+
+###
+
+### Get query events filtered by client
+GET http://localhost:8000/api/v1/audit/queries?client_id=graham-test
+
+###
+
+### Get low faithfulness queries (potential hallucinations)
+GET http://localhost:8000/api/v1/audit/queries?max_faithfulness=0.5
+
+###
+
+### Get all ingestion audit events
+GET http://localhost:8000/api/v1/audit/ingestions
+
+###
+
+### Get failed ingestions only
+GET http://localhost:8000/api/v1/audit/ingestions?status=error
+
+###
+
+### Paginate audit events
+GET http://localhost:8000/api/v1/audit/queries?limit=10&offset=0

@@ -1,9 +1,9 @@
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from contextlib import asynccontextmanager
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from app.core.config import settings
 
-# Separate engine for audit writes
-# Keeps audit DB operations isolated from request sessions
 audit_engine = create_async_engine(
     settings.postgres_url,
     pool_size=3,
