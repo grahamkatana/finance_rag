@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from qdrant_client import AsyncQdrantClient
 
+from app.core.auth import TokenUser, get_current_user
 from app.core.database import get_db
 from app.core.qdrant import get_qdrant
 from app.features.retrieval.service import RetrievalService
@@ -29,15 +30,14 @@ async def evaluate(
     request: EvalRequest,
     db: AsyncSession = Depends(get_db),
     qdrant: AsyncQdrantClient = Depends(get_qdrant),
+    current_user: TokenUser = Depends(get_current_user),
 ):
-    # 1. Retrieve same chunks the RAG would use
     retrieval_service = RetrievalService(db=db, qdrant=qdrant)
     chunks = await retrieval_service.search(
         query=request.query,
         top_n=request.top_n,
     )
 
-    # 2. Evaluate answer against retrieved chunks
     eval_service = EvalService()
     result = await eval_service.evaluate(
         query=request.query,

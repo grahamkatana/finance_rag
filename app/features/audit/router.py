@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import TokenUser, get_current_user
 from app.core.database import get_db
 from app.features.audit.service import AuditService
 
@@ -14,11 +15,8 @@ async def get_query_events(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
+    current_user: TokenUser = Depends(get_current_user),
 ):
-    """
-    Retrieve query audit events.
-    Filter by client, faithfulness score, with pagination.
-    """
     service = AuditService(db=db)
     events = await service.get_query_events(
         client_id=client_id,
@@ -41,11 +39,8 @@ async def get_ingestion_events(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
+    current_user: TokenUser = Depends(get_current_user),
 ):
-    """
-    Retrieve ingestion audit events.
-    Filter by client, status, with pagination.
-    """
     service = AuditService(db=db)
     events = await service.get_ingestion_events(
         client_id=client_id,
