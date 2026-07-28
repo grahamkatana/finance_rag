@@ -1,0 +1,122 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rag_user
+          POSTGRES_PASSWORD: rag_password
+          POSTGRES_DB: rag_finance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+        options: >-
+          --health-cmd "curl -f http://localhost:6333/healthz || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # PostgreSQL
+      POSTGRES_USER: rag_user
+      POSTGRES_PASSWORD: rag_password
+      POSTGRES_DB: rag_finance
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+
+      # Qdrant
+      QDRANT_HOST: localhost
+      QDRANT_PORT: 6333
+      QDRANT_COLLECTION: finance_docs
+
+      # Generation — dummy values, never called in tests
+      LLM_PROVIDER: openai
+      LLM_MODEL: gpt-4o
+      LLM_BASE_URL: ""
+      LLM_API_KEY: "sk-test-dummy"
+
+      # Embeddings — dummy values
+      EMBED_PROVIDER: openai
+      EMBED_MODEL: text-embedding-3-small
+      EMBED_BASE_URL: ""
+      EMBED_API_KEY: "sk-test-dummy"
+      EMBEDDING_SIZE: 1536
+
+      # Eval judge — dummy values
+      JUDGE_PROVIDER: openai
+      JUDGE_MODEL: gpt-4o-mini
+      JUDGE_BASE_URL: ""
+      JUDGE_API_KEY: "sk-test-dummy"
+
+      # Redis
+      REDIS_URL: redis://localhost:6379/0
+
+      # Authentik — dummy values, auth is mocked in conftest
+      AUTHENTIK_JWKS_URI: http://localhost:9000/jwks/
+      AUTHENTIK_ISSUER: http://localhost:9000/
+      AUTHENTIK_CLIENT_ID: test-client-id
+      AUTHENTIK_CLIENT_SECRET: test-client-secret
+
+      # App
+      APP_ENV: test
+      APP_PORT: 8000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run migrations
+        run: uv run alembic upgrade head
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --timeout=30 --tb=short
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            .pytest_cache/
+            storage/logs/
