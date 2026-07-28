@@ -8,29 +8,39 @@ class Settings(BaseSettings):
     postgres_db: str
     postgres_host: str
     postgres_port: int
-    
-    # Authentik
-    authentik_jwks_uri: str
-    authentik_issuer: str
-    authentik_client_id: str
-    authentik_client_secret: str
-    
-    # Redis
-    redis_url: str
 
     # Qdrant
     qdrant_host: str
     qdrant_port: int
     qdrant_collection: str
 
-    # Ollama
-    ollama_base_url: str
-    ollama_llm_model: str
-    ollama_embed_model: str
-    ollama_judge_model: str
+    # Generation
+    llm_provider: str = "ollama"
+    llm_model: str = "phi4-mini"
+    llm_base_url: str = "http://localhost:11434"
+    llm_api_key: str = ""
 
-    #Embedding 
-    embedding_size: int
+    # Embeddings
+    embed_provider: str = "ollama"
+    embed_model: str = "nomic-embed-text"
+    embed_base_url: str = "http://localhost:11434"
+    embed_api_key: str = ""
+    embedding_size: int = 768
+
+    # Eval judge
+    judge_provider: str = "ollama"
+    judge_model: str = "gemma3:4b"
+    judge_base_url: str = "http://localhost:11434"
+    judge_api_key: str = ""
+
+    # Redis
+    redis_url: str
+
+    # Authentik
+    authentik_jwks_uri: str
+    authentik_issuer: str
+    authentik_client_id: str
+    authentik_client_secret: str
 
     # App
     app_env: str
@@ -39,6 +49,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     @property

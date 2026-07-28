@@ -56,8 +56,8 @@ async def stream_and_audit(
         query=query,
         answer=answer,
         chunks=chunks,
-        model_used=settings.ollama_llm_model,
-        embed_model_used=settings.ollama_embed_model,
+        model_used=settings.llm_model,
+        embed_model_used=settings.embed_model,
         duration_ms=duration_ms,
         client_id=client_id,
     )

@@ -1,30 +1,25 @@
-import ollama
-
 from app.core.config import settings
+from app.core.llm.connector import get_embedder
+from app.core.llm.base import BaseEmbedder
 
 
 class Embedder:
+    """
+    Thin wrapper around the embedder connector.
+    Reads provider config from settings at instantiation.
+    Swap embed provider by changing EMBED_PROVIDER in .env.
+    """
+
     def __init__(self):
-        self.client = ollama.AsyncClient(host=settings.ollama_base_url)
-        self.model = settings.ollama_embed_model
+        self._embedder: BaseEmbedder = get_embedder(
+            provider=settings.embed_provider,
+            model=settings.embed_model,
+            api_key=settings.embed_api_key,
+            base_url=settings.embed_base_url,
+        )
 
     async def embed_text(self, text: str) -> list[float]:
-        """
-        Embed a single piece of text into a vector.
-        """
-        response = await self.client.embed(
-            model=self.model,
-            input=text,
-        )
-        return response.embeddings[0]
+        return await self._embedder.embed_text(text)
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """
-        Embed multiple texts in one call.
-        More efficient than calling embed_text in a loop.
-        """
-        response = await self.client.embed(
-            model=self.model,
-            input=texts,
-        )
-        return response.embeddings
+        return await self._embedder.embed_batch(texts)

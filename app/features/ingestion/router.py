@@ -73,7 +73,7 @@ async def upload_pdf(
                 source=source,
                 chunks_ingested=chunks_ingested,
                 file_size_bytes=file_size,
-                embed_model_used=settings.ollama_embed_model,
+                embed_model_used=settings.embed_model,
                 duration_ms=duration_ms,
                 client_id=client_id,
                 status=status,

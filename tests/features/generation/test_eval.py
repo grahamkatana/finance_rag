@@ -1,18 +1,25 @@
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from app.features.generation.eval import EvalService
+from app.core.prompts.helpers import (
+    build_faithfulness_prompt,
+    build_relevance_prompt,
+)
 
 
 @pytest.fixture
 def eval_service():
-    return EvalService()
+    with patch("app.features.generation.eval.get_llm") as mock_get_llm:
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        return EvalService()
 
 
 @pytest.fixture
 def mock_chunks():
     return [
         {
-            "chunk_text": "Apple total net sales were 391 billion dollars in fiscal year 2024.",
+            "chunk_text": "Apple total net sales were $391,035 million.",
             "file_name": "apple_10k.pdf",
             "chunk_index": 0,
             "source": "sec.gov",
@@ -26,20 +33,20 @@ def test_eval_service_instantiates(eval_service):
     assert eval_service is not None
 
 
-def test_build_faithfulness_prompt(eval_service, mock_chunks):
+def test_build_faithfulness_prompt(mock_chunks):
     """Faithfulness prompt must contain answer and context"""
-    prompt = eval_service.build_faithfulness_prompt(
-        answer="Apple net sales were 391 billion dollars.",
+    prompt = build_faithfulness_prompt(
+        answer="Apple net sales were $391,035 million.",
         chunks=mock_chunks,
     )
-    assert "391 billion" in prompt
+    assert "391,035" in prompt
     assert "apple_10k.pdf" in prompt
     assert isinstance(prompt, str)
 
 
-def test_build_relevance_prompt(eval_service, mock_chunks):
+def test_build_relevance_prompt(mock_chunks):
     """Relevance prompt must contain query and chunk text"""
-    prompt = eval_service.build_relevance_prompt(
+    prompt = build_relevance_prompt(
         query="What was Apple total net sales in 2024?",
         chunks=mock_chunks,
     )
@@ -56,7 +63,7 @@ def test_parse_score_valid(eval_service):
 
 
 def test_parse_score_invalid_returns_zero(eval_service):
-    """Invalid score response should return 0.0 not crash"""
+    """Invalid score response should return 0.0"""
     assert eval_service.parse_score("I cannot score this") == 0.0
     assert eval_service.parse_score("") == 0.0
     assert eval_service.parse_score("N/A") == 0.0
@@ -71,19 +78,13 @@ def test_parse_score_clamps_to_range(eval_service):
 @pytest.mark.asyncio
 async def test_evaluate_returns_scores(eval_service, mock_chunks):
     """Evaluate must return faithfulness and relevance scores"""
-    with patch("app.features.generation.eval.ollama.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
+    eval_service.judge.complete = AsyncMock(return_value="Score: 0.85")
 
-        mock_response = MagicMock()
-        mock_response.message.content = "Score: 0.85"
-        mock_client.chat = AsyncMock(return_value=mock_response)
-
-        result = await eval_service.evaluate(
-            query="What was Apple net sales in 2024?",
-            chunks=mock_chunks,
-            answer="Apple net sales were 391 billion dollars.",
-        )
+    result = await eval_service.evaluate(
+        query="What was Apple net sales in 2024?",
+        chunks=mock_chunks,
+        answer="Apple net sales were $391,035 million.",
+    )
 
     assert "faithfulness" in result
     assert "relevance" in result
@@ -95,19 +96,13 @@ async def test_evaluate_returns_scores(eval_service, mock_chunks):
 @pytest.mark.asyncio
 async def test_evaluate_scores_in_range(eval_service, mock_chunks):
     """All scores must be between 0.0 and 1.0"""
-    with patch("app.features.generation.eval.ollama.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
+    eval_service.judge.complete = AsyncMock(return_value="Score: 0.9")
 
-        mock_response = MagicMock()
-        mock_response.message.content = "Score: 0.9"
-        mock_client.chat = AsyncMock(return_value=mock_response)
-
-        result = await eval_service.evaluate(
-            query="What was Apple net sales in 2024?",
-            chunks=mock_chunks,
-            answer="Apple net sales were 391 billion dollars.",
-        )
+    result = await eval_service.evaluate(
+        query="What was Apple net sales in 2024?",
+        chunks=mock_chunks,
+        answer="Apple net sales were $391,035 million.",
+    )
 
     assert 0.0 <= result["faithfulness"] <= 1.0
     assert 0.0 <= result["relevance"] <= 1.0
@@ -115,39 +110,21 @@ async def test_evaluate_scores_in_range(eval_service, mock_chunks):
 
 @pytest.mark.asyncio
 async def test_evaluate_empty_answer(eval_service, mock_chunks):
-    """Empty answer should return low faithfulness score"""
-    with patch("app.features.generation.eval.ollama.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        mock_response = MagicMock()
-        mock_response.message.content = "Score: 0.0"
-        mock_client.chat = AsyncMock(return_value=mock_response)
-
-        result = await eval_service.evaluate(
-            query="What was Apple net sales in 2024?",
-            chunks=mock_chunks,
-            answer="",
-        )
-
+    """Empty answer should return zero scores"""
+    result = await eval_service.evaluate(
+        query="What was Apple net sales in 2024?",
+        chunks=mock_chunks,
+        answer="",
+    )
     assert result["faithfulness"] == 0.0
 
 
 @pytest.mark.asyncio
 async def test_evaluate_empty_chunks(eval_service):
-    """Empty chunks should return zero relevance"""
-    with patch("app.features.generation.eval.ollama.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-
-        mock_response = MagicMock()
-        mock_response.message.content = "Score: 0.0"
-        mock_client.chat = AsyncMock(return_value=mock_response)
-
-        result = await eval_service.evaluate(
-            query="What was Apple net sales in 2024?",
-            chunks=[],
-            answer="I don't know.",
-        )
-
+    """Empty chunks should return zero scores"""
+    result = await eval_service.evaluate(
+        query="What was Apple net sales in 2024?",
+        chunks=[],
+        answer="I don't know.",
+    )
     assert result["relevance"] == 0.0
