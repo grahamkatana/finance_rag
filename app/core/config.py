@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
+    # Admin seed (optional — creates admin on first startup if set)
+    admin_email: str = ""
+    admin_username: str = ""
+    admin_password: str = ""
+
     # App
     app_env: str
     app_port: int

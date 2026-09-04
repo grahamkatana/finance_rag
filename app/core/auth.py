@@ -2,8 +2,10 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.database import get_db
 from app.core.logging import logger
 
 security = HTTPBearer()
@@ -47,3 +49,18 @@ async def get_current_user(
     except JWTError as e:
         log.warning(f"JWT validation failed: {e}")
         raise credentials_exception
+
+
+async def require_admin(
+    current_user: TokenUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TokenUser:
+    from app.features.auth.service import get_user_by_id
+
+    user = await get_user_by_id(int(current_user.sub), db)
+    if not user or not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user

@@ -2,9 +2,10 @@
 ### AUTH
 ### ============================================================
 
-### Register a new user
-POST http://localhost:8000/api/v1/auth/register
+### Admin: create a user (requires admin token)
+POST http://localhost:8000/api/v1/auth/admin/users
 Content-Type: application/json
+Authorization: Bearer ADMIN_ACCESS_TOKEN
 
 {
   "email": "user@example.com",

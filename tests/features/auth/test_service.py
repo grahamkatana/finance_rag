@@ -111,6 +111,14 @@ async def test_create_user_returns_user():
     assert result.username == "alice"
     assert result.hashed_password != "password123"
     assert verify_password("password123", result.hashed_password)
+    assert result.is_admin is False
+
+
+@pytest.mark.asyncio
+async def test_create_user_admin_flag():
+    mock_db = AsyncMock()
+    result = await create_user("a@b.com", "alice", "password123", mock_db, is_admin=True)
+    assert result.is_admin is True
 
 
 # --- get_user_by_id ---

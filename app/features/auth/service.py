@@ -65,12 +65,13 @@ async def get_user_by_email(email: str, db: AsyncSession) -> User | None:
 
 
 async def create_user(
-    email: str, username: str, password: str, db: AsyncSession
+    email: str, username: str, password: str, db: AsyncSession, is_admin: bool = False,
 ) -> User:
     user = User(
         email=email,
         username=username,
         hashed_password=hash_password(password),
+        is_admin=is_admin,
     )
     db.add(user)
     await db.flush()

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import TokenUser, get_current_user
+from app.core.auth import TokenUser, get_current_user, require_admin
 from app.core.config import settings
 from app.core.database import get_db
 from app.features.auth.schemas import (
@@ -27,6 +27,18 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: UserCreate, db: AsyncSession = Depends(get_db)):
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Public registration is disabled. Contact an admin to create an account.",
+    )
+
+
+@router.post("/admin/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def admin_create_user(
+    body: UserCreate,
+    _admin: TokenUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
     if await get_user_by_username(body.username, db):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -39,10 +51,7 @@ async def register(body: UserCreate, db: AsyncSession = Depends(get_db)):
         )
 
     user = await create_user(body.email, body.username, body.password, db)
-    return TokenResponse(
-        access_token=create_access_token(user.id, user.email),
-        refresh_token=create_refresh_token(user.id),
-    )
+    return user
 
 
 @router.post("/login", response_model=TokenResponse)

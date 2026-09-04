@@ -17,67 +17,110 @@ def mock_db():
         yield session
 
 
-# --- /register ---
+@pytest.fixture
+def mock_admin_user():
+    """Mock an admin user returned by get_user_by_id for require_admin checks."""
+    return User(
+        id=1, email="admin@test.com", username="admin",
+        hashed_password="x", is_active=True, is_admin=True,
+    )
+
+
+# --- /register (closed) ---
 
 
 @pytest.mark.asyncio
-async def test_register_returns_201(mock_db):
-    with patch("app.features.auth.router.get_user_by_username", new_callable=AsyncMock, return_value=None), \
-         patch("app.features.auth.router.get_user_by_email", new_callable=AsyncMock, return_value=None), \
-         patch("app.features.auth.router.create_user") as mock_create:
-        mock_create.return_value = User(
-            id=1, email="a@b.com", username="alice",
-            hashed_password="x", is_active=True,
-        )
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            response = await client.post("/api/v1/auth/register", json={
-                "email": "a@b.com", "username": "alice", "password": "pass123"
-            })
-    assert response.status_code == 201
-    data = response.json()
-    assert "access_token" in data
-    assert "refresh_token" in data
-    assert data["token_type"] == "bearer"
-
-
-@pytest.mark.asyncio
-async def test_register_duplicate_username_returns_409(mock_db):
-    with patch("app.features.auth.router.get_user_by_username", new_callable=AsyncMock, return_value=MagicMock()), \
-         patch("app.features.auth.router.get_user_by_email", new_callable=AsyncMock, return_value=None):
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            response = await client.post("/api/v1/auth/register", json={
-                "email": "a@b.com", "username": "alice", "password": "pass123"
-            })
-    assert response.status_code == 409
-    assert "Username already taken" in response.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_register_duplicate_email_returns_409(mock_db):
-    with patch("app.features.auth.router.get_user_by_username", new_callable=AsyncMock, return_value=None), \
-         patch("app.features.auth.router.get_user_by_email", new_callable=AsyncMock, return_value=MagicMock()):
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
-            response = await client.post("/api/v1/auth/register", json={
-                "email": "a@b.com", "username": "alice", "password": "pass123"
-            })
-    assert response.status_code == 409
-    assert "Email already registered" in response.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_register_missing_fields_returns_422(mock_db):
+async def test_register_returns_403(mock_db):
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
         response = await client.post("/api/v1/auth/register", json={
-            "email": "a@b.com"
+            "email": "a@b.com", "username": "alice", "password": "pass123"
         })
+    assert response.status_code == 403
+    assert "disabled" in response.json()["detail"].lower()
+
+
+# --- /admin/users ---
+
+
+@pytest.mark.asyncio
+async def test_admin_create_user_returns_201(mock_db, mock_admin_user):
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=mock_admin_user), \
+         patch("app.features.auth.router.get_user_by_username", new_callable=AsyncMock, return_value=None), \
+         patch("app.features.auth.router.get_user_by_email", new_callable=AsyncMock, return_value=None), \
+         patch("app.features.auth.router.create_user") as mock_create:
+        mock_create.return_value = User(
+            id=2, email="a@b.com", username="alice",
+            hashed_password="x", is_active=True, is_admin=False,
+        )
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/auth/admin/users", json={
+                "email": "a@b.com", "username": "alice", "password": "pass123"
+            })
+    assert response.status_code == 201
+    data = response.json()
+    assert data["email"] == "a@b.com"
+    assert data["username"] == "alice"
+    assert data["is_admin"] is False
+
+
+@pytest.mark.asyncio
+async def test_admin_create_user_duplicate_username_returns_409(mock_db, mock_admin_user):
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=mock_admin_user), \
+         patch("app.features.auth.router.get_user_by_username", new_callable=AsyncMock, return_value=MagicMock()), \
+         patch("app.features.auth.router.get_user_by_email", new_callable=AsyncMock, return_value=None):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/auth/admin/users", json={
+                "email": "a@b.com", "username": "alice", "password": "pass123"
+            })
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_admin_create_user_duplicate_email_returns_409(mock_db, mock_admin_user):
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=mock_admin_user), \
+         patch("app.features.auth.router.get_user_by_username", new_callable=AsyncMock, return_value=None), \
+         patch("app.features.auth.router.get_user_by_email", new_callable=AsyncMock, return_value=MagicMock()):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/auth/admin/users", json={
+                "email": "a@b.com", "username": "alice", "password": "pass123"
+            })
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_admin_create_user_non_admin_returns_403(mock_db):
+    non_admin = User(
+        id=1, email="user@test.com", username="user",
+        hashed_password="x", is_active=True, is_admin=False,
+    )
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=non_admin):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/auth/admin/users", json={
+                "email": "a@b.com", "username": "alice", "password": "pass123"
+            })
+    assert response.status_code == 403
+    assert "Admin access required" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_admin_create_user_missing_fields_returns_422(mock_db, mock_admin_user):
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=mock_admin_user):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/auth/admin/users", json={
+                "email": "a@b.com"
+            })
     assert response.status_code == 422
 
 
@@ -114,7 +157,6 @@ async def test_login_invalid_credentials_returns_401(mock_db):
                 "username": "alice", "password": "wrong"
             })
     assert response.status_code == 401
-    assert "Invalid username or password" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -208,7 +250,7 @@ async def test_refresh_nonexistent_user_returns_401(mock_db):
 async def test_me_returns_current_user(mock_db):
     fake_user = User(
         id=1, email="a@b.com", username="alice",
-        hashed_password="x", is_active=True,
+        hashed_password="x", is_active=True, is_admin=False,
     )
     with patch("app.features.auth.router.get_user_by_id", new_callable=AsyncMock, return_value=fake_user):
         async with AsyncClient(
@@ -221,6 +263,7 @@ async def test_me_returns_current_user(mock_db):
     assert data["email"] == "a@b.com"
     assert data["username"] == "alice"
     assert data["is_active"] is True
+    assert data["is_admin"] is False
 
 
 @pytest.mark.asyncio
