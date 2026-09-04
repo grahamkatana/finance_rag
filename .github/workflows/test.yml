@@ -29,11 +29,6 @@ jobs:
         image: qdrant/qdrant:latest
         ports:
           - 6333:6333
-        options: >-
-          --health-cmd "curl -f http://localhost:6333/healthz || exit 1"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
 
       redis:
         image: redis:7-alpine
@@ -89,9 +84,19 @@ jobs:
       # App
       APP_ENV: test
       APP_PORT: 8000
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Wait for Qdrant
+        run: |
+          echo "Waiting for Qdrant to be ready..."
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:6333/ && echo "Qdrant is ready" && break
+            echo "Attempt $i — retrying in 2s..."
+            sleep 2
+          done
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -117,6 +122,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: |
-            .pytest_cache/
-            storage/logs/
+          path: storage/logs/
