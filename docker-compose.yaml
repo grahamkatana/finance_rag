@@ -43,79 +43,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Authentik requires its own postgres instance
-  authentik_postgres:
-    image: postgres:16
-    container_name: authentik_postgres
-    environment:
-      POSTGRES_USER: authentik
-      POSTGRES_PASSWORD: authentik_password
-      POSTGRES_DB: authentik
-    volumes:
-      - authentik_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U authentik -d authentik"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  authentik_redis:
-    image: redis:7-alpine
-    container_name: authentik_redis
-    volumes:
-      - authentik_redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  authentik_server:
-    image: ghcr.io/goauthentik/server:2024.12
-    container_name: authentik_server
-    command: server
-    environment:
-      AUTHENTIK_REDIS__HOST: authentik_redis
-      AUTHENTIK_POSTGRESQL__HOST: authentik_postgres
-      AUTHENTIK_POSTGRESQL__USER: authentik
-      AUTHENTIK_POSTGRESQL__PASSWORD: authentik_password
-      AUTHENTIK_POSTGRESQL__NAME: authentik
-      AUTHENTIK_SECRET_KEY: "super-secret-key-change-in-production"
-      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
-    ports:
-      - "9000:9000"
-      - "9443:9443"
-    depends_on:
-      - authentik_postgres
-      - authentik_redis
-    volumes:
-      - authentik_media:/media
-      - authentik_templates:/templates
-
-  authentik_worker:
-    image: ghcr.io/goauthentik/server:2024.12
-    container_name: authentik_worker
-    command: worker
-    environment:
-      AUTHENTIK_REDIS__HOST: authentik_redis
-      AUTHENTIK_POSTGRESQL__HOST: authentik_postgres
-      AUTHENTIK_POSTGRESQL__USER: authentik
-      AUTHENTIK_POSTGRESQL__PASSWORD: authentik_password
-      AUTHENTIK_POSTGRESQL__NAME: authentik
-      AUTHENTIK_SECRET_KEY: "super-secret-key-change-in-production"
-      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
-    depends_on:
-      - authentik_postgres
-      - authentik_redis
-    volumes:
-      - authentik_media:/media
-      - authentik_templates:/templates
-
 volumes:
   postgres_data:
   qdrant_data:
   redis_data:
-  authentik_postgres_data:
-  authentik_redis_data:
-  authentik_media:
-  authentik_templates:

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.config import settings
 from app.core.database import Base
 from app.features.ingestion import models as ingestion_models  # noqa: F401
+from app.features.auth import models as auth_models  # noqa: F401
 from app.database import models as audit_models  # noqa: F401
 
 # Alembic Config object

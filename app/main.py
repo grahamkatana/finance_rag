@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.core.logging import logger
 from app.core.qdrant import init_qdrant
+from app.features.auth.router import router as auth_router
 from app.features.ingestion.router import router as ingestion_router
 from app.features.retrieval.router import router as retrieval_router
 from app.features.generation.router import router as generation_router
@@ -26,6 +27,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.include_router(auth_router)
 app.include_router(ingestion_router)
 app.include_router(retrieval_router)
 app.include_router(generation_router)

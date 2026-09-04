@@ -6,7 +6,7 @@ from app.main import app
 
 def fake_user():
     return TokenUser(
-        sub="test-user-id-123",
+        sub="1",
         email="test@ragfinance.com",
         name="Test User",
     )

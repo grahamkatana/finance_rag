@@ -1,4 +1,41 @@
 ### ============================================================
+### AUTH
+### ============================================================
+
+### Register a new user
+POST http://localhost:8000/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "username": "testuser",
+  "password": "securepassword123"
+}
+
+### Login
+POST http://localhost:8000/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "password": "securepassword123"
+}
+
+### Refresh token
+POST http://localhost:8000/api/v1/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "YOUR_REFRESH_TOKEN"
+}
+
+### Get current user
+GET http://localhost:8000/api/v1/auth/me
+Authorization: Bearer YOUR_ACCESS_TOKEN
+
+###
+
+### ============================================================
 ### HEALTH
 ### ============================================================
 

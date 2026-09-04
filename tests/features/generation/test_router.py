@@ -180,7 +180,7 @@ async def test_generate_audit_receives_client_id(
             json={"query": "What was Apple revenue in Q3?"},
         )
     call_kwargs = mock_audit.delay.call_args.kwargs
-    assert call_kwargs["client_id"] == "test-user-id-123"
+    assert call_kwargs["client_id"] == "1"
 
 
 @pytest.mark.asyncio
@@ -197,4 +197,4 @@ async def test_generate_default_client_id(
             json={"query": "What was Apple revenue in Q3?"},
         )
     call_kwargs = mock_audit.delay.call_args.kwargs
-    assert call_kwargs["client_id"] == "test-user-id-123"
+    assert call_kwargs["client_id"] == "1"

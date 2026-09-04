@@ -36,11 +36,11 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str
 
-    # Authentik
-    authentik_jwks_uri: str
-    authentik_issuer: str
-    authentik_client_id: str
-    authentik_client_secret: str
+    # JWT Auth
+    jwt_secret: str
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
 
     # App
     app_env: str
