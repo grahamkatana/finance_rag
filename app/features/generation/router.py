@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from qdrant_client import AsyncQdrantClient
 
-from app.core.auth import TokenUser, get_current_user
+from app.core.auth import UserScope, get_user_scope
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.qdrant import get_qdrant
@@ -30,13 +30,20 @@ async def stream_and_audit(
     query: str,
     top_n: int,
     client_id: str,
+    owner_id: int,
+    is_admin: bool,
     db: AsyncSession,
     qdrant: AsyncQdrantClient,
 ) -> AsyncGenerator[str, None]:
     t0 = time.perf_counter()
 
     retrieval_service = RetrievalService(db=db, qdrant=qdrant)
-    chunks = await retrieval_service.search(query=query, top_n=top_n)
+    chunks = await retrieval_service.search(
+        query=query,
+        top_n=top_n,
+        owner_id=owner_id,
+        is_admin=is_admin,
+    )
 
     generation_service = GenerationService()
     full_answer = []
@@ -68,13 +75,15 @@ async def generate(
     request: GenerateRequest,
     db: AsyncSession = Depends(get_db),
     qdrant: AsyncQdrantClient = Depends(get_qdrant),
-    current_user: TokenUser = Depends(get_current_user),
+    scope: UserScope = Depends(get_user_scope),
 ):
     return StreamingResponse(
         stream_and_audit(
             query=request.query,
             top_n=request.top_n,
-            client_id=current_user.sub,
+            client_id=str(scope.user_id),
+            owner_id=scope.user_id,
+            is_admin=scope.is_admin,
             db=db,
             qdrant=qdrant,
         ),

@@ -35,17 +35,20 @@ class IngestionService:
         file_bytes: bytes,
         file_name: str,
         source: str,
+        owner_id: int,
     ) -> dict:
         async for event in self.ingest_with_progress(
             file_bytes=file_bytes,
             file_name=file_name,
             source=source,
+            owner_id=owner_id,
         ):
             if event["status"] == "done":
                 return {
                     "file_name": event["file_name"],
                     "chunks_ingested": event["chunks_ingested"],
                     "source": event["source"],
+                    "owner_id": owner_id,
                 }
         raise ValueError("Ingestion failed")
 
@@ -54,6 +57,7 @@ class IngestionService:
         file_bytes: bytes,
         file_name: str,
         source: str,
+        owner_id: int,
     ) -> AsyncGenerator[dict, None]:
         self.log.info(f"Starting ingestion: {file_name}")
         yield {"status": "extracting", "message": f"Extracting text from {file_name}..."}
@@ -93,6 +97,7 @@ class IngestionService:
                     "file_name": file_name,
                     "chunk_index": chunk.chunk_index,
                     "source": source,
+                    "owner_id": owner_id,
                 },
             ))
 
@@ -116,10 +121,10 @@ class IngestionService:
                 text("""
                     INSERT INTO documents (
                         file_name, file_type, source,
-                        chunk_text, chunk_index, qdrant_id, fts_vector
+                        chunk_text, chunk_index, qdrant_id, owner_id, fts_vector
                     ) VALUES (
                         :file_name, :file_type, :source,
-                        :chunk_text, :chunk_index, :qdrant_id,
+                        :chunk_text, :chunk_index, :qdrant_id, :owner_id,
                         to_tsvector('english', :chunk_text)
                     )
                 """),
@@ -130,6 +135,7 @@ class IngestionService:
                     "chunk_text": chunk.text,
                     "chunk_index": chunk.chunk_index,
                     "qdrant_id": qdrant_id,
+                    "owner_id": owner_id,
                 },
             )
 

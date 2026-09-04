@@ -207,3 +207,85 @@ async def test_get_low_faithfulness_queries(mock_audit_service, mock_deps):
             "/api/v1/audit/queries?max_faithfulness=0.5"
         )
     assert response.status_code == 200
+
+
+# ---- Scoping tests ----
+
+
+@pytest.mark.asyncio
+async def test_non_admin_query_audit_forces_own_client_id(
+    mock_audit_service, mock_deps
+):
+    """Non-admin requests: client_id param is ignored and replaced with their own."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/api/v1/audit/queries?client_id=someone-else"
+        )
+    assert response.status_code == 200
+    # Service was called, and the forced client_id should be "1" (fake_scope user_id)
+    call_kwargs = mock_audit_service.get_query_events.call_args
+    assert call_kwargs.kwargs.get("client_id") == "1"
+
+
+@pytest.mark.asyncio
+async def test_non_admin_ingestion_audit_forces_own_client_id(
+    mock_audit_service, mock_deps
+):
+    """Non-admin ingestion audit also forces client_id to own."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/api/v1/audit/ingestions?client_id=someone-else"
+        )
+    assert response.status_code == 200
+    call_kwargs = mock_audit_service.get_ingestion_events.call_args
+    assert call_kwargs.kwargs.get("client_id") == "1"
+
+
+@pytest.mark.asyncio
+async def test_admin_query_audit_passes_requested_client_id(
+    mock_audit_service, mock_deps, admin_scope
+):
+    """Admin requests: requested client_id is passed through unchanged."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/api/v1/audit/queries?client_id=other-user"
+        )
+    assert response.status_code == 200
+    call_kwargs = mock_audit_service.get_query_events.call_args
+    assert call_kwargs.kwargs.get("client_id") == "other-user"
+
+
+@pytest.mark.asyncio
+async def test_admin_ingestion_audit_passes_requested_client_id(
+    mock_audit_service, mock_deps, admin_scope
+):
+    """Admin ingestion audit passes requested client_id through."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/api/v1/audit/ingestions?client_id=other-user"
+        )
+    assert response.status_code == 200
+    call_kwargs = mock_audit_service.get_ingestion_events.call_args
+    assert call_kwargs.kwargs.get("client_id") == "other-user"
+
+
+@pytest.mark.asyncio
+async def test_admin_query_audit_no_client_id_passes_none(
+    mock_audit_service, mock_deps, admin_scope
+):
+    """Admin without client_id param passes None (sees all)."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/v1/audit/queries")
+    assert response.status_code == 200
+    call_kwargs = mock_audit_service.get_query_events.call_args
+    assert call_kwargs.kwargs.get("client_id") is None

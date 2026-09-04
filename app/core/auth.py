@@ -64,3 +64,32 @@ async def require_admin(
             detail="Admin access required",
         )
     return current_user
+
+
+class UserScope(BaseModel):
+    """Resolved user scope for per-user data scoping."""
+    user_id: int
+    is_admin: bool
+
+
+async def get_user_scope(
+    current_user: TokenUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserScope:
+    """
+    Resolve the current token into a user_id + is_admin pair.
+    Used by endpoints that need to enforce per-user data visibility.
+    """
+    from app.features.auth.service import get_user_by_id
+
+    try:
+        user_id = int(current_user.sub)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user in token",
+        )
+
+    user = await get_user_by_id(user_id, db)
+    is_admin = bool(user and user.is_admin)
+    return UserScope(user_id=user_id, is_admin=is_admin)

@@ -54,6 +54,14 @@ async def test_endpoint_returns_200(mock_deps):
     assert response.status_code == 200
 ```
 
+### Worklog
+
+Every session or significant activity MUST have a corresponding worklog file in `notes/`. Naming: `yyyy-mm-dd_HH-MM.md` (Windows-safe; colons are not allowed in filenames). Example: `2026-09-04_18-44.md`. Each log contains:
+- Summary of what was done
+- Files changed
+- Current test status
+- Open items / next steps
+
 ### Notes folder
 
 Every significant work item gets a note file in `notes/`. Naming: `NNN-short-description.md`. Each note contains:

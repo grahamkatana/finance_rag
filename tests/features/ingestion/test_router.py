@@ -1,7 +1,8 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 from app.main import app
+from app.features.auth.models import User
 
 
 async def fake_progress(*args, **kwargs):
@@ -273,3 +274,177 @@ async def test_delete_nonexistent_document_returns_404(mock_deps):
                 "/api/v1/ingestion/documents/nonexistent.pdf"
             )
     assert response.status_code == 404
+
+
+# ---- Sharing endpoints ----
+
+
+@pytest.fixture
+def mock_doc_svc():
+    with patch("app.features.ingestion.router.DocumentService") as mock_cls:
+        mock_svc = AsyncMock()
+        mock_cls.return_value = mock_svc
+        yield mock_svc
+
+
+def mock_target_user(user_id=2):
+    return User(
+        id=user_id, email="bob@example.com", username="bob",
+        hashed_password="x", is_active=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_share_document_returns_200(mock_deps, mock_doc_svc):
+    """Owner sharing a file with another user by email returns 200"""
+    mock_doc_svc.is_owner.return_value = True
+    mock_doc_svc.share_file.return_value = True
+    with patch(
+        "app.features.ingestion.router.get_user_by_email",
+        new_callable=AsyncMock,
+        return_value=mock_target_user(),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/ingestion/shares", json={
+                "file_name": "apple_10k.pdf",
+                "user_email": "bob@example.com",
+            })
+    assert response.status_code == 200
+    assert response.json()["shared_with"] == 2
+
+
+@pytest.mark.asyncio
+async def test_share_document_target_not_found_returns_404(mock_deps, mock_doc_svc):
+    """Sharing with a non-existent email returns 404"""
+    with patch(
+        "app.features.ingestion.router.get_user_by_email",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/ingestion/shares", json={
+                "file_name": "apple_10k.pdf",
+                "user_email": "ghost@example.com",
+            })
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_share_document_non_owner_returns_403(mock_deps, mock_doc_svc):
+    """Non-owner (and non-admin) cannot share a file they don't own"""
+    mock_doc_svc.is_owner.return_value = False
+    with patch(
+        "app.features.ingestion.router.get_user_by_email",
+        new_callable=AsyncMock,
+        return_value=mock_target_user(),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/ingestion/shares", json={
+                "file_name": "apple_10k.pdf",
+                "user_email": "bob@example.com",
+            })
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_share_document_file_not_found_returns_404(mock_deps, mock_doc_svc):
+    """Sharing a file the owner doesn't actually have returns 404"""
+    mock_doc_svc.is_owner.return_value = True
+    mock_doc_svc.share_file.return_value = False
+    with patch(
+        "app.features.ingestion.router.get_user_by_email",
+        new_callable=AsyncMock,
+        return_value=mock_target_user(),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/ingestion/shares", json={
+                "file_name": "missing.pdf",
+                "user_email": "bob@example.com",
+            })
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_unshare_document_returns_200(mock_deps, mock_doc_svc):
+    """Owner revoking a share returns 200 with removed count"""
+    mock_doc_svc.is_owner.return_value = True
+    mock_doc_svc.unshare_file.return_value = 1
+    with patch(
+        "app.features.ingestion.router.get_user_by_email",
+        new_callable=AsyncMock,
+        return_value=mock_target_user(),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.request("DELETE", "/api/v1/ingestion/shares", json={
+                "file_name": "apple_10k.pdf",
+                "user_email": "bob@example.com",
+            })
+    assert response.status_code == 200
+    assert response.json()["removed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_unshare_non_owner_returns_403(mock_deps, mock_doc_svc):
+    """Non-owner cannot unshare a file they don't own"""
+    mock_doc_svc.is_owner.return_value = False
+    with patch(
+        "app.features.ingestion.router.get_user_by_email",
+        new_callable=AsyncMock,
+        return_value=mock_target_user(),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.request("DELETE", "/api/v1/ingestion/shares", json={
+                "file_name": "apple_10k.pdf",
+                "user_email": "bob@example.com",
+            })
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_list_document_shares_returns_200(mock_deps, mock_doc_svc):
+    """Owner listing shares returns 200 with share list"""
+    mock_doc_svc.is_owner.return_value = True
+    mock_doc_svc.list_shares.return_value = [
+        {"granted_to_user_id": 2, "created_at": "2024-01-15T10:00:00"},
+    ]
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/v1/ingestion/shares/apple_10k.pdf")
+    assert response.status_code == 200
+    assert response.json()["shares"][0]["granted_to_user_id"] == 2
+
+
+@pytest.mark.asyncio
+async def test_list_document_shares_non_owner_returns_403(mock_deps, mock_doc_svc):
+    """Non-owner viewing shares returns 403"""
+    mock_doc_svc.is_owner.return_value = False
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/v1/ingestion/shares/apple_10k.pdf")
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_share_document_missing_fields_returns_422(mock_deps, mock_doc_svc):
+    """Share request missing user_email returns 422"""
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post("/api/v1/ingestion/shares", json={
+            "file_name": "apple_10k.pdf",
+        })
+    assert response.status_code == 422
