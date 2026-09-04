@@ -120,11 +120,15 @@ async def test_gemini_embed_text_returns_vector(embedder):
 @pytest.mark.asyncio
 async def test_gemini_embed_batch_returns_multiple_vectors(embedder):
     """embed_batch() must return one vector per text"""
-    embedder._genai.embed_content.side_effect = [
-        {"embedding": [0.1, 0.2]},
-        {"embedding": [0.3, 0.4]},
-        {"embedding": [0.5, 0.6]},
-    ]
+    def fake_embed(model, content):
+        vectors = {
+            "text1": [0.1, 0.2],
+            "text2": [0.3, 0.4],
+            "text3": [0.5, 0.6],
+        }
+        return {"embedding": vectors[content]}
+
+    embedder._genai.embed_content.side_effect = fake_embed
 
     result = await embedder.embed_batch(["text1", "text2", "text3"])
     assert len(result) == 3
@@ -135,10 +139,10 @@ async def test_gemini_embed_batch_returns_multiple_vectors(embedder):
 @pytest.mark.asyncio
 async def test_gemini_embed_batch_runs_concurrently(embedder):
     """embed_batch() must call embed_content for each text"""
-    embedder._genai.embed_content.side_effect = [
-        {"embedding": [0.1]},
-        {"embedding": [0.2]},
-    ]
+    def fake_embed(model, content):
+        return {"embedding": [0.1]}
+
+    embedder._genai.embed_content.side_effect = fake_embed
 
     result = await embedder.embed_batch(["text1", "text2"])
     assert embedder._genai.embed_content.call_count == 2
