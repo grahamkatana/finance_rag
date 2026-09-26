@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     qdrant_host: str
     qdrant_port: int
     qdrant_collection: str
+    qdrant_api_key: str = ""
 
     # Generation
     llm_provider: str = "ollama"

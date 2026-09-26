@@ -6,8 +6,11 @@ from app.core.llm.base import BaseLLM, BaseEmbedder
 
 
 class OllamaLLM(BaseLLM):
-    def __init__(self, base_url: str, model: str):
-        self.client = ollama.AsyncClient(host=base_url)
+    def __init__(self, base_url: str, model: str, api_key: str = ""):
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        self.client = ollama.AsyncClient(host=base_url, headers=headers)
         self.model = model
 
     async def stream(
@@ -38,8 +41,11 @@ class OllamaLLM(BaseLLM):
 
 
 class OllamaEmbedder(BaseEmbedder):
-    def __init__(self, base_url: str, model: str):
-        self.client = ollama.AsyncClient(host=base_url)
+    def __init__(self, base_url: str, model: str, api_key: str = ""):
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        self.client = ollama.AsyncClient(host=base_url, headers=headers)
         self.model = model
 
     async def embed_text(

@@ -23,6 +23,7 @@ def get_llm(
         return OllamaLLM(
             base_url=base_url or "http://localhost:11434",
             model=model,
+            api_key=api_key,
         )
 
     if provider in ("openai", "groq", "deepseek", "grok", "mistral"):
@@ -75,6 +76,7 @@ def get_embedder(
         return OllamaEmbedder(
             base_url=base_url or "http://localhost:11434",
             model=model,
+            api_key=api_key,
         )
 
     if provider == "openai":
