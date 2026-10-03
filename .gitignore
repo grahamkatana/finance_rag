@@ -20,3 +20,5 @@ alembic/versions/*.pyc
 # Logs
 storage/documents
 storage/logs
+# local live-server smoke-test file (contains real creds — never commit)
+server.http
