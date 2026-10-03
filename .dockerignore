@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# local dev/test request files (may contain live creds)
+server.http
+requests.http
+
 # git
 .git
 .gitignore
