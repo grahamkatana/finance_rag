@@ -111,3 +111,27 @@ async def test_similar_texts_produce_similar_vectors(embedder):
     different_score = cosine_similarity(v1, v3)
 
     assert similar_score > different_score
+
+
+@pytest.mark.asyncio
+async def test_embed_batch_splits_large_input_into_sub_batches():
+    """embed_batch() must split input larger than batch_size into multiple provider calls."""
+    call_sizes = []
+
+    class RecordingEmbedder:
+        async def embed_text(self, text):
+            return [0.0]
+
+        async def embed_batch(self, texts):
+            call_sizes.append(len(texts))
+            return [[float(len(call_sizes))] for _ in texts]
+
+    with patch(
+        "app.features.ingestion.embedder.get_embedder",
+        return_value=RecordingEmbedder(),
+    ):
+        embedder = Embedder(batch_size=2)
+        vectors = await embedder.embed_batch(["a", "b", "c", "d", "e"])
+
+    assert call_sizes == [2, 2, 1]
+    assert len(vectors) == 5

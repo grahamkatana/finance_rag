@@ -17,8 +17,8 @@ class OllamaLLM(BaseLLM):
         self,
         prompt: str,
     ) -> AsyncGenerator[str, None]:
-        # No await — chat() with stream=True returns async generator directly
-        response = self.client.chat(
+        # await first — chat() is a coroutine that resolves to the async generator
+        response = await self.client.chat(
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
             stream=True,

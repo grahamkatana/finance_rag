@@ -26,7 +26,7 @@ async def test_ollama_llm_stream_yields_tokens(llm):
             for chunk in chunks:
                 yield chunk
 
-        mock_client.chat.return_value = fake_chat()
+        mock_client.chat = AsyncMock(return_value=fake_chat())
 
         tokens = []
         async for token in llm.stream("What was Apple revenue?"):
@@ -48,7 +48,7 @@ async def test_ollama_llm_stream_skips_empty_tokens(llm):
             for chunk in chunks:
                 yield chunk
 
-        mock_client.chat.return_value = fake_chat()
+        mock_client.chat = AsyncMock(return_value=fake_chat())
 
         tokens = []
         async for token in llm.stream("test"):

@@ -8,6 +8,7 @@ client = AsyncQdrantClient(
     host=settings.qdrant_host,
     port=settings.qdrant_port,
     api_key=settings.qdrant_api_key or None,
+    https=False,  # shared Qdrant is plain HTTP internally; api_key alone would force HTTPS
 )
 
 

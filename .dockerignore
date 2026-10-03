@@ -1,0 +1,27 @@
+# secrets — never ship these
+.env
+.env.*
+!.env.example
+
+# git
+.git
+.gitignore
+
+# python
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.uv
+
+# not needed at runtime
+.github
+tests
+notes
+docker-compose.yaml
+
+# generated runtime data (keep storage/prompts, drop data/logs)
+storage/documents
+storage/logs

@@ -1,0 +1,85 @@
+### ============================================================
+### LIVE SERVER — https://finance.tekbridge.co.za
+### (copy of requests.http pointed at the deployed k3s app)
+### ============================================================
+
+### Health Check
+GET https://finance.tekbridge.co.za/health
+
+###
+
+### Login as admin → copy access_token into the requests below
+POST https://finance.tekbridge.co.za/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "m3WD2ZpvmzqZWhJzUjLq"
+}
+
+###
+
+### Get current user (admin)
+GET https://finance.tekbridge.co.za/api/v1/auth/me
+Authorization: Bearer YOUR_ACCESS_TOKEN
+
+###
+
+### Upload Apple 10-K FY2024 (streams SSE; ends with "done")
+POST https://finance.tekbridge.co.za/api/v1/ingestion/upload
+Content-Type: multipart/form-data; boundary=boundary
+Authorization: Bearer YOUR_ACCESS_TOKEN
+
+--boundary
+Content-Disposition: form-data; name="source"
+
+https://investor.apple.com
+--boundary
+Content-Disposition: form-data; name="file"; filename="10-Q4-2024-As-Filed.pdf"
+Content-Type: application/pdf
+
+< ./storage/documents/10-Q4-2024-As-Filed.pdf
+--boundary--
+
+###
+
+### List ingested documents
+GET https://finance.tekbridge.co.za/api/v1/ingestion/documents
+Authorization: Bearer YOUR_ACCESS_TOKEN
+
+###
+
+### Search — net sales (retrieval only, validates Voyage embeddings + Qdrant)
+POST https://finance.tekbridge.co.za/api/v1/retrieval/search
+Content-Type: application/json
+Authorization: Bearer YOUR_ACCESS_TOKEN
+
+{
+  "query": "What was Apple total net sales in 2024?",
+  "top_n": 3
+}
+
+###
+
+### Generate — full RAG (validates Ollama Cloud generation)
+POST https://finance.tekbridge.co.za/api/v1/generation/generate
+Content-Type: application/json
+Authorization: Bearer YOUR_ACCESS_TOKEN
+
+{
+  "query": "What was Apple total net sales in fiscal year 2024?"
+}
+
+###
+
+### Eval — LLM-as-judge (validates judge model)
+POST https://finance.tekbridge.co.za/api/v1/generation/eval
+Content-Type: application/json
+Authorization: Bearer YOUR_ACCESS_TOKEN
+
+{
+  "query": "What was Apple total net sales in 2024?",
+  "answer": "Apple reported total net sales of 391 billion dollars in fiscal year 2024."
+}
+
+###
