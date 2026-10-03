@@ -1,6 +1,6 @@
 # Finance RAG API
 
-A production-grade Retrieval-Augmented Generation system for financial document analysis. Built with FastAPI, Qdrant, PostgreSQL hybrid search, a multi-provider LLM connector, Authentik for authentication, and Celery for background audit processing.
+A production-grade Retrieval-Augmented Generation system for financial document analysis. Built with FastAPI, Qdrant, PostgreSQL hybrid search, a multi-provider LLM connector, local JWT authentication, and Celery for background audit processing.
 
 ---
 
@@ -22,12 +22,10 @@ The ingestion pipeline extracts text from PDFs, splits it into overlapping chunk
 | ORM | SQLAlchemy async |
 | Migrations | Alembic |
 | LLM connector | Multi-provider: Ollama, OpenAI, Groq, DeepSeek, Grok, Gemini, Mistral, Voyage AI |
-| Auth | Authentik, OAuth2, JWT |
+| Auth | Local JWT (HS256), per-user data scoping |
 | Background jobs | Celery, Redis |
-| Job monitoring | Flower |
 | Dependency management | uv |
 | Testing | pytest, pytest-asyncio |
-| Frontend | React, Vite, TypeScript |
 
 ---
 
@@ -40,13 +38,14 @@ app/
 │   ├── database.py        Async SQLAlchemy engine and session
 │   ├── qdrant.py          Qdrant client and collection initialisation
 │   ├── logging.py         Rotating file logger
-│   ├── auth.py            JWT validation via Authentik JWKS
+│   ├── auth.py            JWT validation (local HS256) + admin guard
+│   ├── rate_limit.py      Redis-backed rate limiting
 │   ├── celery.py          Celery application instance
 │   └── llm/
 │       ├── base.py        Abstract interfaces for LLM and embedder
 │       ├── connector.py   Single entry point for all providers
 │       └── providers/
-│           ├── ollama.py  Local inference
+│           ├── ollama.py  Ollama (local or cloud)
 │           ├── openai.py  OpenAI, Groq, DeepSeek, Grok
 │           ├── gemini.py  Google Gemini
 │           ├── mistral.py Mistral AI
@@ -81,7 +80,7 @@ Prompts live in `storage/prompts/` as Markdown files with `{variable}` placehold
 - Python 3.11 or later
 - uv package manager
 - Docker and Docker Compose
-- Ollama (for local inference)
+- Ollama (only for fully-local inference; cloud providers need no local install)
 
 ---
 
@@ -94,7 +93,7 @@ uv sync
 source .venv/bin/activate
 ```
 
-Pull the Ollama models used by default:
+To run fully local (no cloud API keys), pull the Ollama models:
 
 ```bash
 ollama pull nomic-embed-text
@@ -106,51 +105,62 @@ ollama pull gemma3:4b
 
 ## Configuration
 
-Copy `.env.example` to `.env`. The default configuration uses OpenAI for generation and embeddings:
+Copy `.env.example` to `.env`. The default configuration uses Ollama Cloud for generation and Voyage AI for embeddings:
 
 ```env
 # PostgreSQL
 POSTGRES_USER=rag_user
-POSTGRES_PASSWORD=rag_password
+POSTGRES_PASSWORD=CHANGE_ME
 POSTGRES_DB=rag_finance
-POSTGRES_HOST=localhost
+POSTGRES_HOST=postgres
 POSTGRES_PORT=5432
 
 # Qdrant
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
+QDRANT_HOST=domain.com
+QDRANT_PORT=443
 QDRANT_COLLECTION=finance_docs
+QDRANT_API_KEY=CHANGE_ME
 
-# Generation — OpenAI
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o
-LLM_BASE_URL=
-LLM_API_KEY=sk-your-openai-key
+# Generation — Ollama Cloud
+LLM_PROVIDER=ollama
+LLM_MODEL=gemma4:31b
+LLM_BASE_URL=https://ollama.com
+LLM_API_KEY=CHANGE_ME
 
-# Embeddings — OpenAI
-EMBED_PROVIDER=openai
-EMBED_MODEL=text-embedding-3-small
+# Embeddings — Voyage AI
+EMBED_PROVIDER=voyage
+EMBED_MODEL=voyage-finance-2
 EMBED_BASE_URL=
-EMBED_API_KEY=sk-your-openai-key
-EMBEDDING_SIZE=1536
+EMBED_API_KEY=CHANGE_ME
+EMBEDDING_SIZE=1024
 
-# Eval judge — Ollama (local, free)
+# Judge — Ollama Cloud (larger model)
 JUDGE_PROVIDER=ollama
-JUDGE_MODEL=gemma3:4b
-JUDGE_BASE_URL=http://localhost:11434
-JUDGE_API_KEY=
+JUDGE_MODEL=deepseek-v4-pro:0813
+JUDGE_BASE_URL=https://ollama.com
+JUDGE_API_KEY=CHANGE_ME
 
 # Redis
-REDIS_URL=redis://localhost:6379/0
+REDIS_URL=redis://redis:6379/0
 
-# Authentik
-AUTHENTIK_JWKS_URI=http://localhost:9000/application/o/rag-finance-provider/jwks/
-AUTHENTIK_ISSUER=http://localhost:9000/application/o/rag-finance-provider/
-AUTHENTIK_CLIENT_ID=your-client-id
-AUTHENTIK_CLIENT_SECRET=your-client-secret
+# JWT auth
+JWT_SECRET=CHANGE_ME
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# Admin seed (created on first startup)
+ADMIN_EMAIL=admin@example.com
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=CHANGE_ME
+
+# Rate limiting (requests per 60s window; optional — defaults shown)
+RATE_LIMIT_LOGIN_PER_MINUTE=10
+RATE_LIMIT_GENERATE_PER_MINUTE=10
+RATE_LIMIT_EVAL_PER_MINUTE=10
 
 # App
-APP_ENV=development
+APP_ENV=production
 APP_PORT=8000
 ```
 
@@ -224,7 +234,7 @@ Run migrations:
 alembic upgrade head
 ```
 
-You need three terminals running simultaneously.
+You need two terminals running simultaneously.
 
 **Terminal 1 — API server:**
 ```bash
@@ -240,7 +250,8 @@ celery -A app.core.celery worker --loglevel=info
 celery -A app.core.celery worker --loglevel=info --pool=solo
 ```
 
-**Terminal 3 — Flower job monitor:**
+**Optional — Flower job monitor** (inspect Celery task state):
+
 ```bash
 celery -A app.core.celery flower --port=5555
 ```
@@ -250,26 +261,28 @@ celery -A app.core.celery flower --port=5555
 | API | http://localhost:8000 |
 | API documentation | http://localhost:8000/docs |
 | Qdrant dashboard | http://localhost:6333/dashboard |
-| Authentik admin | http://localhost:9000/if/admin/ |
-| Flower | http://localhost:5555 |
+| Flower (optional) | http://localhost:5555 |
 
 ---
 
 ## Authentication
 
-All endpoints except `/health` require a valid JWT Bearer token issued by Authentik.
+Authentication is a **local JWT implementation** — no external identity provider. Users are stored in the `users` table (PostgreSQL) with bcrypt-hashed passwords, and tokens are signed with HS256 using `JWT_SECRET`.
 
-Configure Authentik by creating an OAuth2/OpenID provider named `rag-finance-provider` with client type Confidential, then creating an application linked to that provider. Add `http://localhost:5173/callback` as a redirect URI for the React frontend.
+- **Public self-registration is disabled** — `POST /auth/register` always returns `403`.
+- **Admin account** is seeded on first startup from `ADMIN_EMAIL` / `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+- **Only admins create users** — `POST /auth/admin/users` requires an admin token.
+- **Per-user data scoping** — documents, retrieval, and generation are filtered by the authenticated user; admins see everything.
 
-Obtain a token for API testing:
+Log in to obtain a token:
 
 ```bash
-curl -X POST http://localhost:9000/application/o/token/ \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials&client_id=YOUR_CLIENT_ID&client_secret=YOUR_CLIENT_SECRET"
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "YOUR_PASSWORD"}'
 ```
 
-Use the token on protected requests:
+The response contains `access_token` (30 min) and `refresh_token` (7 days). Use the access token on protected requests:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/generation/generate \
@@ -278,11 +291,25 @@ curl -X POST http://localhost:8000/api/v1/generation/generate \
   -d '{"query": "What was Apple total net sales in 2024?"}'
 ```
 
+### Rate limiting
+
+`/auth/login`, `/generation/generate`, and `/generation/eval` are rate-limited (default 10 requests per minute, keyed by client IP for login and by user for the others). Tune via `RATE_LIMIT_*_PER_MINUTE`. Exceeding the limit returns `429` with a `Retry-After` header.
+
 ---
 
 ## API Reference
 
-All endpoints require an `Authorization: Bearer <token>` header.
+All data endpoints require an `Authorization: Bearer <token>` header. `login` and `refresh` are the only public routes.
+
+### Authentication
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/v1/auth/register` | Disabled — always returns `403`. |
+| POST | `/api/v1/auth/login` | Exchange username/password for access + refresh tokens. |
+| POST | `/api/v1/auth/refresh` | Exchange a refresh token for new tokens. |
+| GET | `/api/v1/auth/me` | Return the current user. |
+| POST | `/api/v1/auth/admin/users` | Create a user (admin only). |
 
 ### Ingestion
 
@@ -389,7 +416,7 @@ pytest tests/features/ingestion/ -v
 pytest tests/core/llm/ -v
 ```
 
-No running server, database, or model inference is needed for tests. All external dependencies are mocked. Celery tasks are patched in `tests/conftest.py` to prevent Redis connection attempts.
+No running server, database, or model inference is needed for tests. All external dependencies are mocked. Celery tasks and the rate limiter's Redis client are patched in `tests/conftest.py` to prevent connection attempts.
 
 ---
 
