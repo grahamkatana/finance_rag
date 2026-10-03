@@ -4,8 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from qdrant_client import AsyncQdrantClient
 
 from app.core.auth import TokenUser, get_current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.qdrant import get_qdrant
+from app.core.rate_limit import user_rate_limit
 from app.features.retrieval.service import RetrievalService
 from app.features.generation.eval import EvalService
 
@@ -25,7 +27,11 @@ class EvalResponse(BaseModel):
     chunks_evaluated: int
 
 
-@router.post("/eval", response_model=EvalResponse)
+@router.post(
+    "/eval",
+    response_model=EvalResponse,
+    dependencies=[Depends(user_rate_limit(settings.rate_limit_eval_per_minute, "eval"))],
+)
 async def evaluate(
     request: EvalRequest,
     db: AsyncSession = Depends(get_db),

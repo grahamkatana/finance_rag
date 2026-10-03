@@ -11,6 +11,7 @@ from app.core.auth import UserScope, get_user_scope
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.qdrant import get_qdrant
+from app.core.rate_limit import user_rate_limit
 from app.core.logging import logger
 from app.features.retrieval.service import RetrievalService
 from app.features.generation.service import GenerationService
@@ -70,7 +71,10 @@ async def stream_and_audit(
     )
 
 
-@router.post("/generate")
+@router.post(
+    "/generate",
+    dependencies=[Depends(user_rate_limit(settings.rate_limit_generate_per_minute, "generate"))],
+)
 async def generate(
     request: GenerateRequest,
     db: AsyncSession = Depends(get_db),

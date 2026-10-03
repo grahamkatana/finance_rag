@@ -10,20 +10,20 @@ Secrets are injected at runtime by k8s (`finance-rag-secret`), **not** baked int
 
 Bump the tag every time the code changes. Match it in `05-app.yaml` (two refs: the `migrate` init container and the app container).
 
-Current: `v0.1.4`
+Current: `v0.1.5`
 
 ## Build
 
 ```bash
 cd ~/Downloads/Books/code/finance_rag
-docker build -t yourusername/finance-rag:v0.1.4 .
+docker build -t yourusername/finance-rag:v0.1.5 .
 ```
 
 ## Push
 
 ```bash
 docker login            # once, if not already logged in
-docker push yourusername/finance-rag:v0.1.4
+docker push yourusername/finance-rag:v0.1.5
 ```
 
 ## Deploy

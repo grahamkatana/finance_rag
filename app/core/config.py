@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str
 
+    # Rate limiting (requests per 60s window)
+    rate_limit_login_per_minute: int = 10
+    rate_limit_generate_per_minute: int = 10
+    rate_limit_eval_per_minute: int = 10
+
     # JWT Auth
     jwt_secret: str
     jwt_algorithm: str = "HS256"

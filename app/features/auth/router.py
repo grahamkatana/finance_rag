@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import TokenUser, get_current_user, require_admin
 from app.core.config import settings
+from app.core.rate_limit import ip_rate_limit
 from app.core.database import get_db
 from app.features.auth.schemas import (
     TokenRefresh,
@@ -54,7 +55,11 @@ async def admin_create_user(
     return user
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    dependencies=[Depends(ip_rate_limit(settings.rate_limit_login_per_minute, "login"))],
+)
 async def login(body: UserLogin, db: AsyncSession = Depends(get_db)):
     user = await authenticate_user(body.username, body.password, db)
     if not user:

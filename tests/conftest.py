@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from app.core.auth import get_current_user, get_user_scope, TokenUser, UserScope
 from app.main import app
 
@@ -46,4 +46,17 @@ def mock_celery_tasks():
          patch("app.features.generation.router.process_query_audit") as mock_query:
         mock_ing.delay = MagicMock()
         mock_query.delay = MagicMock()
+        yield
+
+
+# Mock the rate limiter's Redis client globally — default count is 1 (under any limit).
+# Individual rate-limit tests patch this again with an over-limit count.
+@pytest.fixture(autouse=True)
+def mock_rate_limit_redis():
+    pipe = MagicMock()
+    pipe.execute = AsyncMock(return_value=[1, True])
+    client = MagicMock()
+    client.pipeline.return_value = pipe
+    client.ttl = AsyncMock(return_value=60)
+    with patch("app.core.rate_limit._get_client", return_value=client):
         yield
