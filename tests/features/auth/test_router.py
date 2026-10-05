@@ -354,3 +354,37 @@ async def test_me_user_not_found_returns_404(mock_db):
         ) as client:
             response = await client.get("/api/v1/auth/me")
     assert response.status_code == 404
+
+
+@pytest.fixture
+def fake_db():
+    from app.core.database import get_db
+    db = AsyncMock()
+    app.dependency_overrides[get_db] = lambda: db
+    yield db
+    app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+async def test_a_role_change_is_committed_before_the_response_is_sent(fake_db, mock_admin_user):
+    """The Users page reloads its list the moment this returns; it must not see the old role."""
+    target = _user(2, "alice", is_admin=False)
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=mock_admin_user), \
+         patch("app.features.auth.router.get_user_by_id", new_callable=AsyncMock, return_value=target):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.patch("/api/v1/auth/admin/users/2", json={"is_admin": True})
+    assert response.status_code == 200
+    fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_new_user_is_committed_before_the_response_is_sent(fake_db, mock_admin_user):
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=mock_admin_user), \
+         patch("app.features.auth.router.get_user_by_username", new_callable=AsyncMock, return_value=None), \
+         patch("app.features.auth.router.get_user_by_email", new_callable=AsyncMock, return_value=None), \
+         patch("app.features.auth.router.create_user", new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = User(id=3, email="a@b.com", username="alice", hashed_password="x", is_active=True, is_admin=False)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/v1/auth/admin/users", json={"email": "a@b.com", "username": "alice", "password": "pass123"})
+    assert response.status_code == 201
+    fake_db.commit.assert_awaited_once()

@@ -54,6 +54,7 @@ async def admin_create_user(
         )
 
     user = await create_user(body.email, body.username, body.password, db)
+    await db.commit()  # before answering: the Users page reloads its list straight after
     return user
 
 
@@ -94,7 +95,10 @@ async def admin_update_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="The built-in admin account cannot be demoted",
             )
-    user.is_admin = body.is_admin  # get_db commits when the request ends
+    user.is_admin = body.is_admin
+    # Commit before answering. get_db commits only once the response has been sent, so the
+    # page's immediate reload of the list could still show the old role.
+    await db.commit()
     return user
 
 

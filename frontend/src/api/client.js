@@ -161,6 +161,26 @@ export const deleteChat = (id) => request(`/chats/${id}`, { method: "DELETE" });
 export const evaluateAnswer = (query, answer, top_n, messageId) =>
   request("/generation/eval", json("POST", { query, answer, top_n, message_id: messageId ?? null }));
 
+// ---- Android app releases ----
+export const fetchReleases = () => request("/releases").then((r) => r.releases);
+export const deleteRelease = (id) => request(`/releases/${id}`, { method: "DELETE" });
+
+/** Publish a new version (admin). `fields` = { file, versionName, versionCode, notes }. */
+export function uploadRelease({ file, versionName, versionCode, notes }) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("version_name", versionName);
+  form.append("version_code", String(versionCode));
+  form.append("notes", notes || "");
+  return request("/releases", { method: "POST", body: form });
+}
+
+/** Starts the download. A plain link cannot carry the login, so the API issues a link good for two minutes. */
+export async function downloadRelease(id) {
+  const { url } = await request(`/releases/${id}/download-url`, { method: "POST" });
+  window.location.href = url; // the response is an attachment, so the browser downloads it and stays on this page
+}
+
 // ---- audit ----
 function qs(params) {
   const p = new URLSearchParams();

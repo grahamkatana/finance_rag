@@ -6,11 +6,12 @@ import AskPage from "./components/AskPage";
 import DocumentsPage from "./components/DocumentsPage";
 import ActivityPage from "./components/ActivityPage";
 import UsersPage from "./components/UsersPage";
+import ReleasesPage from "./components/ReleasesPage";
 import { fetchMe, hasSession, logout as apiLogout, fetchChats, deleteChat, UnauthorizedError } from "./api/client";
 
 // Each page has its own URL, so refresh, back/forward and shared links work.
 // A chat has one too (/chats/12). nginx serves index.html for any path that isn't a file.
-const PATHS = { ask: "/", documents: "/documents", activity: "/activity", users: "/users" };
+const PATHS = { ask: "/", documents: "/documents", activity: "/activity", users: "/users", android: "/android" };
 const urlFor = (page, chatId) => (page === "ask" && chatId ? `/chats/${chatId}` : PATHS[page]);
 
 function parseLocation() {
@@ -144,6 +145,7 @@ export default function App() {
       {page === "documents" && <DocumentsPage user={user} onSessionExpired={handleLogout} />}
       {page === "activity" && <ActivityPage user={user} onSessionExpired={handleLogout} />}
       {page === "users" && <UsersPage currentUser={user} onSessionExpired={handleLogout} />}
+      {page === "android" && <ReleasesPage user={user} onSessionExpired={handleLogout} />}
     </div>
   );
 }

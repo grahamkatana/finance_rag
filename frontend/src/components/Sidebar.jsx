@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MessageSquareText, FileText, Activity, Users, LogOut, Landmark, Plus, MoreHorizontal, Trash2 } from "lucide-react";
+import { MessageSquareText, FileText, Activity, Users, LogOut, Landmark, Plus, MoreHorizontal, Trash2, Smartphone } from "lucide-react";
 import { Button } from "./ui/Button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "./ui/DropdownMenu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/Dialog";
@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { key: "ask", label: "Ask", icon: MessageSquareText },
   { key: "documents", label: "Documents", icon: FileText },
   { key: "activity", label: "Activity", icon: Activity },
+  { key: "android", label: "Android app", icon: Smartphone },
 ];
 
 function groupChatsByDate(chats) {

@@ -280,6 +280,19 @@ npm test         # stream/SSE parsing checks
 For production it builds to a static nginx image (`frontend/Dockerfile`) that proxies `/api/`
 to the API. Accounts are created by an admin ("Add user" in the sidebar); there is no sign-up.
 
+## Restoring history from before chats existed
+
+Questions asked before chats were added are in the audit trail only. To show them in a user's chat list:
+
+```bash
+kubectl -n finance-rag exec deploy/finance-rag -c finance-rag -- \
+  uv run python -m app.backfill_chats --username <name> --dry-run   # count only
+kubectl -n finance-rag exec deploy/finance-rag -c finance-rag -- \
+  uv run python -m app.backfill_chats --username <name>
+```
+
+One chat per question, with its answer, sources and original time. Safe to re-run. To undo, delete the chats in the sidebar.
+
 ## Authentication
 
 Authentication is a **local JWT implementation** — no external identity provider. Users are stored in the `users` table (PostgreSQL) with bcrypt-hashed passwords, and tokens are signed with HS256 using `JWT_SECRET`.
@@ -369,6 +382,23 @@ and `generation_history.md`.
 | GET | `/api/v1/chats` | List your chats, most recently active first. |
 | GET | `/api/v1/chats/{id}` | A chat with its messages; assistant messages carry their `sources`. |
 | DELETE | `/api/v1/chats/{id}` | Delete a chat and its messages. |
+
+### Android app releases
+
+Every version of the Android app is stored (in PostgreSQL, so it is backed up with the rest) and can be
+downloaded again. The web app shows them on its **Android app** page; admins publish and delete versions.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/v1/releases` | All versions, newest first, with size and SHA-256. |
+| POST | `/api/v1/releases` | Publish a version (admin). Multipart: `file`, `version_name`, `version_code`, `notes`. |
+| POST | `/api/v1/releases/{id}/download-url` | A link to the file, valid for 2 minutes. |
+| GET | `/api/v1/releases/{id}/file?t=...` | The APK, as an attachment. The token replaces the login header, which a plain browser link cannot send. |
+| DELETE | `/api/v1/releases/{id}` | Delete a version (admin). |
+
+A version code must be higher than every earlier one (Android uses it to decide what is newer). Uploads are limited
+to 50 MB and must be a zip containing `AndroidManifest.xml` and compiled code. The download token has its own type, so
+it opens nothing else in the API and a login token does not open the file.
 
 ### Audit
 

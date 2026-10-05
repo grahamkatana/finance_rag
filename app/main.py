@@ -14,6 +14,7 @@ from app.features.generation.router import router as generation_router
 from app.features.generation.eval_router import router as eval_router
 from app.features.audit.router import router as audit_router
 from app.features.chats.router import router as chats_router
+from app.features.releases.router import router as releases_router
 
 
 async def seed_admin():
@@ -69,6 +70,7 @@ app.include_router(generation_router)
 app.include_router(eval_router)
 app.include_router(audit_router)
 app.include_router(chats_router)
+app.include_router(releases_router)
 
 
 @app.exception_handler(EmbeddingUnavailableError)
