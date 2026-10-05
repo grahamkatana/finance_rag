@@ -1,0 +1,12 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A small bank building, inside the 66dp safe zone of an adaptive icon. -->
+    <group android:scaleX="0.8" android:scaleY="0.8" android:pivotX="54" android:pivotY="54">
+        <path android:fillColor="#FF8FD6AE" android:pathData="M54,30 L80,44 H28 Z" />
+        <path android:fillColor="#FF8FD6AE" android:pathData="M33,50h6v20h-6z M45,50h6v20h-6z M57,50h6v20h-6z M69,50h6v20h-6z" />
+        <path android:fillColor="#FF8FD6AE" android:pathData="M28,74h52v6H28z" />
+    </group>
+</vector>

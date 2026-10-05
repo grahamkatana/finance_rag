@@ -32,3 +32,7 @@ storage/logs
 
 # built as its own image (frontend/Dockerfile), not part of the API image
 frontend
+
+# the Android app is built with Gradle, not part of the API image (and its build/ folder is large)
+android
+

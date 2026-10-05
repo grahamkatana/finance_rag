@@ -265,6 +265,16 @@ celery -A app.core.celery flower --port=5555
 
 ---
 
+## Android App
+
+A native Android client (Kotlin + Jetpack Compose) lives in [`android/`](android/README.md): login, streamed
+answers with tappable sources, saved chats and follow-ups. Its README has the step-by-step build and install
+guide. Built APKs are published from the web app's **Android app** page, which keeps every version.
+
+No secrets live in that folder: the signing key is generated outside the repository, its password is in a
+git-ignored `android/keystore.properties`, and the only address in the code is the public API URL. The API's
+Docker build ignores `android/`.
+
 ## Web Frontend
 
 A browser UI lives in `frontend/` (Vite + React + Tailwind): ask questions with streamed answers

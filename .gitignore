@@ -22,3 +22,16 @@ storage/documents
 storage/logs
 # local live-server smoke-test file (contains real creds — never commit)
 server.http
+
+# Android app (android/): build output and signing material must never be committed.
+# android/.gitignore says the same; this is the safety net if that file is ever edited or lost.
+android/**/build/
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/keystore.properties
+*.jks
+*.keystore
+*.p12
+*.apk
+
