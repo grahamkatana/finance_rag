@@ -11,6 +11,38 @@ from app.features.ingestion.embedder import Embedder
 from app.features.retrieval.hybrid import SearchResult, reciprocal_rank_fusion
 
 
+class EmbeddingUnavailableError(RuntimeError):
+    """The embedding provider could not embed the query (rate limit, quota, outage)."""
+
+
+# One question fans out into several searches for the same text (the answer,
+# its source list, the answer check). Embedding providers bill and rate-limit
+# per call -- Voyage's free tier allows 3 a minute -- so the query vector is
+# kept briefly and reused. Same text + same model always gives the same vector.
+# ponytail: in-process dict, fine for one API process; move to Redis if the API
+# is ever scaled to several replicas and the limit bites again.
+_QUERY_VECTOR_TTL_SECONDS = 15 * 60
+_QUERY_VECTOR_MAX_ENTRIES = 512
+_query_vector_cache: dict[tuple[str, str], tuple[float, list[float]]] = {}
+
+
+async def embed_query(query: str) -> list[float]:
+    key = (settings.embed_model, query)
+    now = time.monotonic()
+    hit = _query_vector_cache.get(key)
+    if hit and now - hit[0] < _QUERY_VECTOR_TTL_SECONDS:
+        return hit[1]
+    try:
+        vector = await Embedder().embed_text(query)
+    except Exception as e:
+        logger.getChild("retrieval").error(f"Query embedding failed ({settings.embed_model}): {e}")
+        raise EmbeddingUnavailableError(str(e)) from e
+    if len(_query_vector_cache) >= _QUERY_VECTOR_MAX_ENTRIES:
+        _query_vector_cache.pop(next(iter(_query_vector_cache)))  # oldest inserted
+    _query_vector_cache[key] = (now, vector)
+    return vector
+
+
 class RetrievalService:
     def __init__(self, db: AsyncSession, qdrant: AsyncQdrantClient):
         self.db = db
@@ -28,8 +60,7 @@ class RetrievalService:
             raise ValueError("Query cannot be empty")
 
         t0 = time.perf_counter()
-        embedder = Embedder()
-        query_vector = await embedder.embed_text(query)
+        query_vector = await embed_query(query)
         self.log.info(f"Query embedding took {time.perf_counter() - t0:.2f}s")
 
         shared_files = await self._shared_file_names(owner_id) if not is_admin else []

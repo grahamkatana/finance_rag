@@ -124,6 +124,86 @@ async def test_admin_create_user_missing_fields_returns_422(mock_db, mock_admin_
     assert response.status_code == 422
 
 
+# --- /admin/users (list + grant/revoke admin) ---
+
+
+def _user(id, username, is_admin=False):
+    return User(id=id, email=f"{username}@test.com", username=username, hashed_password="x", is_active=True, is_admin=is_admin)
+
+
+@pytest.mark.asyncio
+async def test_admin_list_users_returns_all_users(mock_db, mock_admin_user):
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=mock_admin_user), \
+         patch("app.features.auth.router.list_users", new_callable=AsyncMock, return_value=[mock_admin_user, _user(2, "alice")]):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/v1/auth/admin/users")
+    assert response.status_code == 200
+    data = response.json()
+    assert [(u["username"], u["is_admin"]) for u in data] == [("admin", True), ("alice", False)]
+    assert "hashed_password" not in data[0]
+
+
+@pytest.mark.asyncio
+async def test_admin_list_users_non_admin_returns_403(mock_db):
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=_user(1, "user")):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/v1/auth/admin/users")
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("start,requested", [(False, True), (True, False)])
+async def test_admin_can_grant_and_revoke_admin(mock_db, mock_admin_user, start, requested):
+    target = _user(2, "alice", is_admin=start)
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=mock_admin_user), \
+         patch("app.features.auth.router.get_user_by_id", new_callable=AsyncMock, return_value=target):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.patch("/api/v1/auth/admin/users/2", json={"is_admin": requested})
+    assert response.status_code == 200
+    assert response.json()["is_admin"] is requested
+    assert target.is_admin is requested
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_demote_self(mock_db, mock_admin_user):
+    # conftest's fake token has sub="1", the same id as mock_admin_user
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=mock_admin_user), \
+         patch("app.features.auth.router.get_user_by_id", new_callable=AsyncMock, return_value=mock_admin_user):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.patch("/api/v1/auth/admin/users/1", json={"is_admin": False})
+    assert response.status_code == 400
+    assert mock_admin_user.is_admin is True
+
+
+@pytest.mark.asyncio
+async def test_built_in_admin_cannot_be_demoted(mock_db, mock_admin_user):
+    seeded = _user(5, "root", is_admin=True)
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=mock_admin_user), \
+         patch("app.features.auth.router.get_user_by_id", new_callable=AsyncMock, return_value=seeded), \
+         patch.object(settings, "admin_username", "root"):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.patch("/api/v1/auth/admin/users/5", json={"is_admin": False})
+    assert response.status_code == 400
+    assert seeded.is_admin is True
+
+
+@pytest.mark.asyncio
+async def test_admin_update_unknown_user_returns_404(mock_db, mock_admin_user):
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=mock_admin_user), \
+         patch("app.features.auth.router.get_user_by_id", new_callable=AsyncMock, return_value=None):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.patch("/api/v1/auth/admin/users/99", json={"is_admin": True})
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_admin_update_user_non_admin_returns_403(mock_db):
+    with patch("app.features.auth.service.get_user_by_id", new_callable=AsyncMock, return_value=_user(1, "user")):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.patch("/api/v1/auth/admin/users/2", json={"is_admin": True})
+    assert response.status_code == 403
+
+
 # --- /login ---
 
 

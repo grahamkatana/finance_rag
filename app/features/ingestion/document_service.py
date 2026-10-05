@@ -61,15 +61,15 @@ class DocumentService:
         Return a summary of documents visible to the user.
         Non-admins see owned + shared documents; admins see everything.
         """
+        params = {"owner_id": owner_id}
         if is_admin:
             where = ""
-            params = {}
         else:
             visible = await self._visible_file_names(owner_id, is_admin)
             if not visible:
                 return []
             where = "WHERE file_name = ANY(:files)"
-            params = {"files": visible}
+            params["files"] = visible
 
         result = await self.db.execute(
             text(f"""
@@ -77,7 +77,8 @@ class DocumentService:
                     file_name,
                     source,
                     COUNT(*) as chunk_count,
-                    MIN(created_at) as created_at
+                    MIN(created_at) as created_at,
+                    BOOL_OR(owner_id = :owner_id) as is_owner
                 FROM documents
                 {where}
                 GROUP BY file_name, source
@@ -92,6 +93,9 @@ class DocumentService:
                 "source": row.source,
                 "chunk_count": row.chunk_count,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
+                # False = shared with the caller (or, for an admin, someone
+                # else's file): visible, but not theirs to share.
+                "is_owner": bool(row.is_owner),
             }
             for row in rows
         ]
@@ -228,10 +232,11 @@ class DocumentService:
         """List who a file is shared with. Owner (or admin) only."""
         result = await self.db.execute(
             text("""
-                SELECT granted_to_user_id, created_at
-                FROM document_shares
-                WHERE file_name = :file_name AND owner_id = :owner_id
-                ORDER BY created_at DESC
+                SELECT s.granted_to_user_id, s.created_at, u.email
+                FROM document_shares s
+                LEFT JOIN users u ON u.id = s.granted_to_user_id
+                WHERE s.file_name = :file_name AND s.owner_id = :owner_id
+                ORDER BY s.created_at DESC
             """),
             {"file_name": file_name, "owner_id": owner_id},
         )
@@ -239,6 +244,8 @@ class DocumentService:
         return [
             {
                 "granted_to_user_id": row.granted_to_user_id,
+                # Unsharing is by email, so a client needs it to offer "remove".
+                "email": row.email,
                 "created_at": row.created_at.isoformat() if row.created_at else None,
             }
             for row in rows

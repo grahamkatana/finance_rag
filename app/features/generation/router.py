@@ -29,23 +29,10 @@ class GenerateRequest(BaseModel):
 
 async def stream_and_audit(
     query: str,
-    top_n: int,
+    chunks: list[dict],
     client_id: str,
-    owner_id: int,
-    is_admin: bool,
-    db: AsyncSession,
-    qdrant: AsyncQdrantClient,
+    t0: float,
 ) -> AsyncGenerator[str, None]:
-    t0 = time.perf_counter()
-
-    retrieval_service = RetrievalService(db=db, qdrant=qdrant)
-    chunks = await retrieval_service.search(
-        query=query,
-        top_n=top_n,
-        owner_id=owner_id,
-        is_admin=is_admin,
-    )
-
     generation_service = GenerationService()
     full_answer = []
 
@@ -81,15 +68,22 @@ async def generate(
     qdrant: AsyncQdrantClient = Depends(get_qdrant),
     scope: UserScope = Depends(get_user_scope),
 ):
+    t0 = time.perf_counter()
+    # Retrieval runs before the response starts: once streaming has begun the
+    # status is already 200, so a failure here (e.g. the embedding provider's
+    # rate limit) could only show up as a silently truncated answer.
+    chunks = await RetrievalService(db=db, qdrant=qdrant).search(
+        query=request.query,
+        top_n=request.top_n,
+        owner_id=scope.user_id,
+        is_admin=scope.is_admin,
+    )
     return StreamingResponse(
         stream_and_audit(
             query=request.query,
-            top_n=request.top_n,
+            chunks=chunks,
             client_id=str(scope.user_id),
-            owner_id=scope.user_id,
-            is_admin=scope.is_admin,
-            db=db,
-            qdrant=qdrant,
+            t0=t0,
         ),
         media_type="text/plain",
     )

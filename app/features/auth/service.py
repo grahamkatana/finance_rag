@@ -64,6 +64,11 @@ async def get_user_by_email(email: str, db: AsyncSession) -> User | None:
     return result.scalar_one_or_none()
 
 
+async def list_users(db: AsyncSession) -> list[User]:
+    result = await db.execute(select(User).order_by(User.id))
+    return list(result.scalars().all())
+
+
 async def create_user(
     email: str, username: str, password: str, db: AsyncSession, is_admin: bool = False,
 ) -> User:

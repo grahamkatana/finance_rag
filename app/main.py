@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.logging import logger
@@ -8,6 +9,7 @@ from app.core.qdrant import init_qdrant
 from app.features.auth.router import router as auth_router
 from app.features.ingestion.router import router as ingestion_router
 from app.features.retrieval.router import router as retrieval_router
+from app.features.retrieval.service import EmbeddingUnavailableError
 from app.features.generation.router import router as generation_router
 from app.features.generation.eval_router import router as eval_router
 from app.features.audit.router import router as audit_router
@@ -65,6 +67,17 @@ app.include_router(retrieval_router)
 app.include_router(generation_router)
 app.include_router(eval_router)
 app.include_router(audit_router)
+
+
+@app.exception_handler(EmbeddingUnavailableError)
+async def embedding_unavailable(request: Request, exc: EmbeddingUnavailableError):
+    # Search, answering and answer-checking all start by embedding the
+    # question; when the provider refuses, say so instead of a bare 500.
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "The search service is busy or over its rate limit. Please wait a minute and try again."},
+        headers={"Retry-After": "60"},
+    )
 
 
 @app.get("/health")

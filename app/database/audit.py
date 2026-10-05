@@ -1,13 +1,18 @@
 from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
+# NullPool on purpose. The Celery tasks that use this engine each call
+# asyncio.run(), i.e. each runs in its own event loop, and an asyncpg
+# connection only works on the loop that created it. A pooled connection
+# handed to the next task fails with "another operation is in progress", so
+# every session opens its own connection and closes it when done.
 audit_engine = create_async_engine(
     settings.postgres_url,
-    pool_size=3,
-    max_overflow=5,
+    poolclass=NullPool,
 )
 
 AuditSessionLocal = async_sessionmaker(

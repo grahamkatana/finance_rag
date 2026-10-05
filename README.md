@@ -265,6 +265,21 @@ celery -A app.core.celery flower --port=5555
 
 ---
 
+## Web Frontend
+
+A browser UI lives in `frontend/` (Vite + React + Tailwind): ask questions with streamed answers
+and their source passages, upload / share / delete PDFs, and review past questions and uploads.
+
+```bash
+cd frontend
+npm install
+npm run dev      # http://localhost:5176, proxies /api to the API on :8000
+npm test         # stream/SSE parsing checks
+```
+
+For production it builds to a static nginx image (`frontend/Dockerfile`) that proxies `/api/`
+to the API. Accounts are created by an admin ("Add user" in the sidebar); there is no sign-up.
+
 ## Authentication
 
 Authentication is a **local JWT implementation** — no external identity provider. Users are stored in the `users` table (PostgreSQL) with bcrypt-hashed passwords, and tokens are signed with HS256 using `JWT_SECRET`.

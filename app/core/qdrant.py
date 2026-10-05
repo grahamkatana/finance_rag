@@ -1,5 +1,11 @@
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import Distance, VectorParams
+from qdrant_client.models import (
+    Distance,
+    ScalarQuantization,
+    ScalarQuantizationConfig,
+    ScalarType,
+    VectorParams,
+)
 
 from app.core.config import settings
 
@@ -26,6 +32,14 @@ async def init_qdrant() -> None:
             vectors_config=VectorParams(
                 size=settings.embedding_size,
                 distance=Distance.COSINE,
+            ),
+            # int8 scalar quantization, pinned in RAM. The shared Qdrant pod is
+            # memory-capped; unquantized float vectors get paged out and every
+            # search re-reads them from disk (this took books_rag searches from
+            # ~50 ms to 20-30 s -- see books_rag/QDRANT_QUANTIZATION.md). 4x
+            # smaller vectors stay resident; recall stays >99% for RAG.
+            quantization_config=ScalarQuantization(
+                scalar=ScalarQuantizationConfig(type=ScalarType.INT8, always_ram=True)
             ),
         )
         print(f"Created Qdrant collection: {settings.qdrant_collection}")

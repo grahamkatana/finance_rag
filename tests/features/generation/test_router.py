@@ -198,3 +198,17 @@ async def test_generate_default_client_id(
         )
     call_kwargs = mock_audit.delay.call_args.kwargs
     assert call_kwargs["client_id"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_generate_retrieval_failure_is_an_http_error_not_a_broken_stream(
+    mock_retrieval_service, mock_generation_service, mock_audit, mock_deps
+):
+    """Retrieval runs before streaming starts, so its failure reaches the client as a 503."""
+    from app.features.retrieval.service import EmbeddingUnavailableError
+    mock_retrieval_service.search.side_effect = EmbeddingUnavailableError("reduced rate limits of 3 RPM")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/generation/generate", json={"query": "net sales?"})
+    assert response.status_code == 503
+    assert "rate limit" in response.json()["detail"]
+

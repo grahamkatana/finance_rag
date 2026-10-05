@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.features.auth.schemas import (
     TokenRefresh,
     TokenResponse,
+    UserAdminUpdate,
     UserCreate,
     UserLogin,
     UserResponse,
@@ -21,6 +22,7 @@ from app.features.auth.service import (
     get_user_by_email,
     get_user_by_id,
     get_user_by_username,
+    list_users,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -52,6 +54,47 @@ async def admin_create_user(
         )
 
     user = await create_user(body.email, body.username, body.password, db)
+    return user
+
+
+@router.get("/admin/users", response_model=list[UserResponse])
+async def admin_list_users(
+    _admin: TokenUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    return await list_users(db)
+
+
+@router.patch("/admin/users/{user_id}", response_model=UserResponse)
+async def admin_update_user(
+    user_id: int,
+    body: UserAdminUpdate,
+    admin: TokenUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Grant or revoke admin access."""
+    user = await get_user_by_id(user_id, db)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    if not body.is_admin:
+        # An admin can't demote themselves: with one admin that would lock
+        # everyone out of user management.
+        if user.id == int(admin.sub):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot remove your own admin access",
+            )
+        # seed_admin() re-promotes this account on every startup, so a
+        # demotion would silently undo itself at the next deploy.
+        if settings.admin_username and user.username == settings.admin_username:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The built-in admin account cannot be demoted",
+            )
+    user.is_admin = body.is_admin  # get_db commits when the request ends
     return user
 
 

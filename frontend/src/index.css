@@ -1,0 +1,103 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@import "tw-animate-css";
+
+:root {
+  /* Dark "ledger" palette, built from two anchors: the near-black
+     oxblood ground (#120b0d) and banker's green (#2c6e49). Surfaces step
+     up from the ground in small lightness increments; green is the only
+     saturated colour, kept for actions and emphasis. */
+  color-scheme: dark;
+  --background: 343 24% 6%;        /* #120b0d */
+  --foreground: 36 22% 91%;        /* warm paper white */
+  --card: 342 20% 9%;
+  --card-foreground: 36 22% 91%;
+  --popover: 342 18% 11%;
+  --popover-foreground: 36 22% 91%;
+  --primary: 146 43% 30%;          /* #2c6e49 -- fills (buttons, the user's own messages) */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 342 14% 15%;
+  --secondary-foreground: 36 22% 91%;
+  --muted: 342 16% 12%;
+  --muted-foreground: 30 9% 63%;
+  --accent: 146 34% 14%;           /* green-tinted surface: hover, active nav */
+  --accent-foreground: 146 46% 70%; /* green that is readable AS TEXT on the dark ground; #2c6e49 itself is not */
+  --destructive: 0 65% 55%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 342 12% 18%;
+  --input: 342 12% 24%;
+  --ring: 146 43% 42%;
+  --radius: 0.625rem;
+}
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  /* Figures line up in columns everywhere, the way they do in a filing. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Page titles and the wordmark use the system's serif (no web font to
+   load -- the CSP only allows same-origin), for an annual-report feel. */
+.font-display {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  letter-spacing: -0.01em;
+}
+
+/* Login backdrop: a faint green glow rising from the ground colour. */
+.login-backdrop {
+  background:
+    radial-gradient(60rem 30rem at 50% -10%, hsl(146 43% 30% / 0.22), transparent 70%),
+    hsl(var(--background));
+}
+
+.thin-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+  border-radius: 9999px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Mobile: iOS Safari zooms the whole page when a focused field is under
+   16px, and wide markdown tables would otherwise push the page sideways. */
+@media (max-width: 767px) {
+  input, textarea, select {
+    font-size: 16px;
+  }
+  .prose table {
+    display: block;
+    overflow-x: auto;
+  }
+}

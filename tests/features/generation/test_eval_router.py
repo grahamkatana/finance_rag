@@ -181,3 +181,42 @@ async def test_eval_calls_retrieval(
             },
         )
     assert mock_retrieval_service.search.called
+
+
+@pytest.mark.asyncio
+async def test_eval_retrieval_is_scoped_to_the_caller(
+    mock_deps, mock_retrieval_service, mock_eval_service
+):
+    """The judge must only see chunks the caller can access (same as /generate)."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test"
+    ) as client:
+        await client.post(
+            "/api/v1/generation/eval",
+            json={"query": "What was net sales?", "answer": "391 billion."},
+        )
+    kwargs = mock_retrieval_service.search.call_args.kwargs
+    assert kwargs["owner_id"] == 1
+    assert kwargs["is_admin"] is False
+
+
+@pytest.mark.asyncio
+async def test_eval_judge_failure_returns_readable_503(
+    mock_deps, mock_retrieval_service, mock_eval_service
+):
+    """A judge-provider error (quota, plan, outage) is a 503 with a message, not a bare 500."""
+    mock_eval_service.evaluate.side_effect = RuntimeError("this model is not included in your free usage")
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/api/v1/generation/eval",
+            json={"query": "What was net sales?", "answer": "391 billion."},
+        )
+    assert response.status_code == 503
+    detail = response.json()["detail"]
+    assert "scoring model is unavailable" in detail
+    assert "free usage" not in detail  # the provider's message is logged, not shown to users
+

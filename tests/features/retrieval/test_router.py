@@ -148,3 +148,19 @@ async def test_search_default_top_n(mock_retrieval_service, mock_deps):
             json={"query": "Apple revenue Q3"},
         )
     assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_search_embedding_rate_limit_returns_readable_503():
+    """An embedding-provider refusal is a 503 with a message and Retry-After, not a bare 500."""
+    from app.features.retrieval.service import EmbeddingUnavailableError
+    with patch("app.features.retrieval.router.RetrievalService") as mock_cls, \
+         patch("app.features.retrieval.router.get_db"), patch("app.features.retrieval.router.get_qdrant"):
+        mock_cls.return_value.search = AsyncMock(side_effect=EmbeddingUnavailableError("reduced rate limits of 3 RPM"))
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post("/api/v1/retrieval/search", json={"query": "net sales"})
+    assert response.status_code == 503
+    assert "rate limit" in response.json()["detail"]
+    assert "3 RPM" not in response.json()["detail"]
+    assert response.headers["retry-after"] == "60"
+

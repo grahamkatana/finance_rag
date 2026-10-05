@@ -60,3 +60,13 @@ def mock_rate_limit_redis():
     client.ttl = AsyncMock(return_value=60)
     with patch("app.core.rate_limit._get_client", return_value=client):
         yield
+
+
+@pytest.fixture(autouse=True)
+def clear_query_vector_cache():
+    """Query vectors are cached in-process; keep tests independent of each other."""
+    from app.features.retrieval.service import _query_vector_cache
+    _query_vector_cache.clear()
+    yield
+    _query_vector_cache.clear()
+

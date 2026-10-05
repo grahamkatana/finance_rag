@@ -276,3 +276,27 @@ async def test_admin_qdrant_no_filter(
         await service.search(query="Apple revenue Q3", owner_id=1, is_admin=True)
         _, kwargs = service.qdrant.query_points.call_args
         assert kwargs.get("query_filter") is None
+
+
+@pytest.mark.asyncio
+async def test_same_query_is_embedded_once():
+    """Answer + source list + answer check all search the same text: one embedding call, not three."""
+    from app.features.retrieval.service import embed_query
+    with patch("app.features.retrieval.service.Embedder") as mock_cls:
+        mock_cls.return_value.embed_text = AsyncMock(return_value=[0.1, 0.2])
+        first = await embed_query("What was net sales?")
+        second = await embed_query("What was net sales?")
+        other = await embed_query("A different question")
+    assert first == second == other == [0.1, 0.2]
+    assert mock_cls.return_value.embed_text.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_embedding_failure_is_not_cached_and_raises_typed_error():
+    from app.features.retrieval.service import embed_query, EmbeddingUnavailableError
+    with patch("app.features.retrieval.service.Embedder") as mock_cls:
+        mock_cls.return_value.embed_text = AsyncMock(side_effect=[RuntimeError("rate limit: 3 RPM"), [0.5]])
+        with pytest.raises(EmbeddingUnavailableError):
+            await embed_query("q")
+        assert await embed_query("q") == [0.5]  # the failure did not poison the cache
+
