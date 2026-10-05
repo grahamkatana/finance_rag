@@ -1,6 +1,6 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from app.main import app
 
 
@@ -219,4 +219,50 @@ async def test_eval_judge_failure_returns_readable_503(
     detail = response.json()["detail"]
     assert "scoring model is unavailable" in detail
     assert "free usage" not in detail  # the provider's message is logged, not shown to users
+
+
+@pytest.fixture
+def saved_answer():
+    with patch("app.features.generation.eval_router.ChatService") as mock_cls:
+        service = AsyncMock()
+        service.get_assistant_message.return_value = MagicMock(
+            content="Services were $96.2B (saved answer).",
+            sources=[{"chunk_text": "Services net sales were $96,169 million.", "file_name": "10k.pdf", "chunk_index": 7}],
+            search_query="What were Apple's services net sales in fiscal 2024?",
+        )
+        mock_cls.return_value = service
+        yield service
+
+
+@pytest.mark.asyncio
+async def test_eval_of_a_saved_answer_uses_its_own_passages_and_search_query(
+    mock_deps, mock_retrieval_service, mock_eval_service, saved_answer
+):
+    """For a follow-up, searching again with the typed words would find other passages and give a misleading score."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/generation/eval",
+            json={"query": "And services?", "answer": "ignored: the saved answer is used", "message_id": 12},
+        )
+    assert response.status_code == 200
+    assert response.json()["query"] == "And services?"  # echoes what the caller sent
+    saved_answer.get_assistant_message.assert_awaited_once_with(12, 1)
+    mock_retrieval_service.search.assert_not_awaited()  # no search, so no embedding call either
+    kwargs = mock_eval_service.evaluate.await_args.kwargs
+    assert kwargs["query"] == "What were Apple's services net sales in fiscal 2024?"
+    assert kwargs["answer"] == "Services were $96.2B (saved answer)."
+    assert kwargs["chunks"][0]["file_name"] == "10k.pdf"
+
+
+@pytest.mark.asyncio
+async def test_eval_of_an_answer_that_is_not_yours_is_404(
+    mock_deps, mock_retrieval_service, mock_eval_service, saved_answer
+):
+    saved_answer.get_assistant_message.return_value = None
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/generation/eval", json={"query": "q", "answer": "a", "message_id": 999},
+        )
+    assert response.status_code == 404
+    mock_eval_service.evaluate.assert_not_awaited()
 

@@ -325,6 +325,8 @@ All data endpoints require an `Authorization: Bearer <token>` header. `login` an
 | POST | `/api/v1/auth/refresh` | Exchange a refresh token for new tokens. |
 | GET | `/api/v1/auth/me` | Return the current user. |
 | POST | `/api/v1/auth/admin/users` | Create a user (admin only). |
+| GET | `/api/v1/auth/admin/users` | List all users (admin only). |
+| PATCH | `/api/v1/auth/admin/users/{id}` | Grant or revoke admin access (admin only). |
 
 ### Ingestion
 
@@ -344,8 +346,29 @@ All data endpoints require an `Authorization: Bearer <token>` header. `login` an
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/v1/generation/generate` | Stream a grounded answer to a query. |
-| POST | `/api/v1/generation/eval` | Score an answer for faithfulness and relevance. |
+| POST | `/api/v1/generation/generate` | Stream a grounded answer to a query. Optional `chat_id` continues a chat; the chat's id is returned in the `X-Chat-Id` header. |
+| POST | `/api/v1/generation/eval` | Score an answer for faithfulness and relevance. With `message_id` (a saved answer in your chats) it is scored against the passages that answer used, with no new search. |
+
+### Chats
+
+Every question asked through `generate` is saved in a chat, together with its answer and the passages the
+answer was built from. Chats are private to their owner (admins included); the admin view of everyone's
+questions is the audit trail below.
+
+**Follow-up questions.** When `chat_id` is given, the last six messages of that chat are used in two ways.
+The latest question is first rewritten by the answer model into a standalone one ("and services?" becomes
+"What were Apple's services net sales in fiscal 2024?"), and that rewrite is what gets searched, so retrieval
+works for follow-ups. The same messages are then included in the answer prompt so requests about the answer
+itself ("shorter", "as a table") work; facts still come only from the retrieved passages. A first question
+costs nothing extra; a follow-up adds one short model call, and falls back to the question as typed if it fails.
+The rewrite is saved with the answer (`search_query` on each message). Prompts: `storage/prompts/condense.md`
+and `generation_history.md`.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/v1/chats` | List your chats, most recently active first. |
+| GET | `/api/v1/chats/{id}` | A chat with its messages; assistant messages carry their `sources`. |
+| DELETE | `/api/v1/chats/{id}` | Delete a chat and its messages. |
 
 ### Audit
 

@@ -1,11 +1,18 @@
 from app.core.prompts.loader import load_prompt
 
 
-def build_generation_prompt(query: str, chunks: list[dict]) -> str:
+def build_generation_prompt(
+    query: str,
+    chunks: list[dict],
+    history: list[dict] | None = None,
+    asked: str | None = None,
+) -> str:
     """
     Build the RAG generation prompt.
     Uses generation_no_context.md when no chunks retrieved.
-    Uses generation.md when chunks available.
+    Uses generation.md when chunks available, or generation_history.md when
+    the question is a follow-up in a chat (`history` is the earlier messages,
+    `asked` is what the user actually typed, `query` is its standalone form).
     """
     if not chunks:
         template = load_prompt("generation_no_context")
@@ -18,6 +25,13 @@ def build_generation_prompt(query: str, chunks: list[dict]) -> str:
             f"{chunk['chunk_text']}"
         )
     context = "\n\n".join(context_parts)
+
+    if history:
+        from app.features.generation.history import format_history
+
+        return load_prompt("generation_history").format(
+            history=format_history(history), context=context, asked=asked or query, query=query,
+        )
 
     template = load_prompt("generation")
     return template.format(query=query, context=context)

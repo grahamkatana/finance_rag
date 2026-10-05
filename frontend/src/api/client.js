@@ -139,15 +139,27 @@ export const shareDocument = (file_name, user_email) => request("/ingestion/shar
 export const unshareDocument = (file_name, user_email) => request("/ingestion/shares", json("DELETE", { file_name, user_email }));
 
 // ---- ask ----
-export const searchChunks = (query, top_n) => request("/retrieval/search", json("POST", { query, top_n })).then((r) => r.results);
-
-/** Streams the answer as plain text; onToken gets each piece as it arrives. */
-export async function streamAnswer(query, top_n, onToken) {
-  const res = await authedFetch("/generation/generate", json("POST", { query, top_n }));
+/**
+ * Streams the answer as plain text. The API saves the question and the
+ * finished answer into a chat and names it in the X-Chat-Id header (a new chat
+ * when chatId is null); onChat gets that id before the first token.
+ */
+export async function streamAnswer(query, top_n, chatId, { onChat, onToken }) {
+  const res = await authedFetch("/generation/generate", json("POST", { query, top_n, chat_id: chatId }));
+  const id = res.headers.get("X-Chat-Id");
+  if (id) onChat(Number(id));
   for await (const piece of readText(res)) onToken(piece);
 }
 
-export const evaluateAnswer = (query, answer, top_n) => request("/generation/eval", json("POST", { query, answer, top_n }));
+// ---- chats ----
+export const fetchChats = () => request("/chats").then((r) => r.chats);
+export const fetchChat = (id) => request(`/chats/${id}`);
+export const deleteChat = (id) => request(`/chats/${id}`, { method: "DELETE" });
+
+// With messageId the API scores the saved answer against the passages it was built from;
+// without it (an answer that has no saved copy) it searches again with `query`.
+export const evaluateAnswer = (query, answer, top_n, messageId) =>
+  request("/generation/eval", json("POST", { query, answer, top_n, message_id: messageId ?? null }));
 
 // ---- audit ----
 function qs(params) {

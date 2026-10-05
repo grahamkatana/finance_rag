@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Landmark, Copy, Check, ShieldCheck, Loader2, FileText, Plus } from "lucide-react";
+import { Landmark, Copy, Check, ShieldCheck, Loader2, FileText, Search } from "lucide-react";
 import { Button } from "./ui/Button";
 import ScoreBadge from "./ScoreBadge";
 import SourcePanel from "./SourcePanel";
 import { cn } from "../lib/utils";
-import { streamAnswer, searchChunks, evaluateAnswer, UnauthorizedError } from "../api/client";
+import { streamAnswer, fetchChat, evaluateAnswer, UnauthorizedError } from "../api/client";
 
 const SUGGESTIONS = [
   "What was total net sales in the most recent fiscal year?",
@@ -15,118 +15,127 @@ const SUGGESTIONS = [
 ];
 const TOP_N_OPTIONS = [3, 5, 8, 10];
 
-let nextId = 1;
+let nextId = -1; // negative ids for messages not yet saved by the API; saved ones keep their own
 
-// The conversation is kept in this browser so a refresh doesn't lose it.
-// The API has no conversation model; the permanent, cross-device record of
-// every question and answer is the Activity page. Logging out removes it.
-const storageKey = (userId) => `finance_rag_conversation_${userId}`;
-const MAX_SAVED_MESSAGES = 60;
-
-export function clearSavedConversation(userId) {
-  try {
-    localStorage.removeItem(storageKey(userId));
-  } catch {
-    // storage unavailable -- nothing to clear
-  }
+// The API stores each saved answer with the passages it was built from.
+function toMessages(saved) {
+  return saved.map((m, i) =>
+    m.role === "user"
+      ? { id: m.id, role: "user", content: m.content }
+      : {
+          id: m.id, serverId: m.id, role: "assistant", content: m.content, done: true, scores: null,
+          sources: m.sources || [],
+          searchQuery: m.search_query,
+          query: saved[i - 1]?.content ?? "", // the question it answered, for "Check answer"
+          topN: m.sources?.length || 5,
+        }
+  );
 }
 
-function loadConversation(userId) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey(userId)) || "[]");
-    if (!Array.isArray(saved)) return [];
-    nextId = Math.max(nextId, ...saved.map((m) => m.id + 1));
-    return saved;
-  } catch {
-    return [];
-  }
-}
-
-export default function AskPage({ user, hidden, onSessionExpired, onNavigate }) {
-  const [messages, setMessages] = useState(() => loadConversation(user.id));
+export default function AskPage({ hidden, chatId, onChatCreated, onChatsChanged, onChatMissing, onSessionExpired, onNavigate }) {
+  const [messages, setMessages] = useState([]);
   const [value, setValue] = useState("");
   const [topN, setTopN] = useState(5);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [selectedSource, setSelectedSource] = useState(null);
   const bottomRef = useRef(null);
+  const createdHere = useRef(null); // a chat this page just created: its messages are already on screen
+  const turn = useRef(0); // bumped whenever the visible chat changes, so a stale answer can't touch the new one
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Saved once an answer has settled, never mid-stream: a half-written
-  // answer restored after a refresh would look finished.
+  // Opening a chat (sidebar, a /chats/12 link, back/forward) or starting a new one.
   useEffect(() => {
-    if (isStreaming) return;
-    try {
-      const settled = messages.filter((m) => m.role === "user" || m.done).map((m) => (m.scores === "loading" ? { ...m, scores: null } : m));
-      localStorage.setItem(storageKey(user.id), JSON.stringify(settled.slice(-MAX_SAVED_MESSAGES)));
-    } catch {
-      // storage full or unavailable -- the conversation just won't survive a refresh
+    if (chatId !== null && chatId === createdHere.current) {
+      createdHere.current = null;
+      return;
     }
-  }, [messages, isStreaming, user.id]);
-
-  const newChat = () => {
-    setMessages([]);
+    turn.current += 1;
+    setIsStreaming(false);
     setSelectedSource(null);
-  };
+    if (chatId === null) {
+      setMessages([]);
+      return;
+    }
+    let cancelled = false;
+    setMessages([]);
+    setIsLoadingChat(true);
+    fetchChat(chatId)
+      .then((chat) => !cancelled && setMessages(toMessages(chat.messages)))
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof UnauthorizedError) onSessionExpired();
+        else if (err.status === 404) onChatMissing(); // deleted, or not yours
+      })
+      .finally(() => !cancelled && setIsLoadingChat(false));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
 
   const patch = (id, changes) =>
     setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...(typeof changes === "function" ? changes(m) : changes) } : m)));
 
   const send = (question) => {
     const query = question.trim();
-    if (!query || isStreaming) return;
-    const id = nextId++;
+    if (!query || isStreaming || isLoadingChat) return;
+    const id = nextId--;
+    const mine = turn.current;
+    const current = () => turn.current === mine; // false once the person has moved to another chat
+    let activeChat = chatId;
     setMessages((prev) => [
       ...prev,
-      { id: nextId++, role: "user", content: query },
+      { id: nextId--, role: "user", content: query },
       { id, role: "assistant", query, topN, content: "", sources: null, scores: null, done: false },
     ]);
     setValue("");
     setIsStreaming(true);
 
-    // The answer stream is plain text and doesn't carry the chunks it was
-    // built from, so the same search is run for the source list: same query
-    // and top_n means the same ranked chunks the model sees as "Source 1..N".
-    // It waits for the answer's first piece, because by then the API has
-    // embedded the question and reuses that -- asking in parallel would spend
-    // a second embedding call against a rate-limited provider.
-    let sourcesRequested = false;
-    const loadSources = () => {
-      if (sourcesRequested) return;
-      sourcesRequested = true;
-      searchChunks(query, topN)
-        .then((sources) => patch(id, { sources }))
-        .catch(() => patch(id, { sources: [] }));
-    };
-
-    streamAnswer(query, topN, (piece) => {
-      loadSources();
-      patch(id, (m) => ({ content: m.content + piece }));
+    streamAnswer(query, topN, chatId, {
+      onChat: (newId) => {
+        activeChat = newId;
+        if (current() && chatId === null) {
+          createdHere.current = newId;
+          onChatCreated(newId);
+          onChatsChanged();
+        }
+      },
+      onToken: (piece) => patch(id, (m) => ({ content: m.content + piece })),
     })
-      .then(() => {
-        loadSources();
+      .then(async () => {
         patch(id, { done: true });
+        // The saved answer carries the exact passages the model saw as "Source 1..N".
+        try {
+          const saved = await fetchChat(activeChat);
+          const last = [...saved.messages].reverse().find((m) => m.role === "assistant");
+          patch(id, { serverId: last?.id, sources: last?.sources || [], searchQuery: last?.search_query });
+        } catch {
+          patch(id, { sources: [] });
+        }
+        onChatsChanged();
       })
       .catch((err) => {
         if (err instanceof UnauthorizedError) return onSessionExpired();
         patch(id, (m) => ({
           done: true,
-          sources: m.sources ?? [],
           error: err.status === 429
             ? "You're asking faster than the rate limit allows. Give it a minute and try again."
             : err.status === 503 ? err.message // the API's own explanation (e.g. the search service is rate limited)
+            : err.status === 404 ? "This chat no longer exists. Start a new chat to keep going."
             : m.content ? "The answer was cut off. Please try again." : "Sorry, I couldn't get an answer. Please try again.",
         }));
       })
-      .finally(() => setIsStreaming(false));
+      .finally(() => current() && setIsStreaming(false));
   };
 
   const checkAnswer = async (m) => {
     patch(m.id, { scores: "loading" });
     try {
-      patch(m.id, { scores: await evaluateAnswer(m.query, m.content, m.topN) });
+      patch(m.id, { scores: await evaluateAnswer(m.query, m.content, m.topN, m.serverId) });
     } catch (err) {
       if (err instanceof UnauthorizedError) return onSessionExpired();
       patch(m.id, { scores: { error: err.status === 429 ? "Rate limit reached, try again in a minute." : err.message } });
@@ -138,14 +147,8 @@ export default function AskPage({ user, hidden, onSessionExpired, onNavigate }) 
       <div className="flex min-w-0 flex-1 flex-col bg-background">
         <div className="thin-scrollbar flex-1 overflow-y-auto px-4 py-6">
           <div className="mx-auto max-w-2xl space-y-6">
-            {messages.length > 0 && (
-              <div className="flex justify-end">
-                <Button variant="outline" size="sm" className="gap-1.5" disabled={isStreaming} onClick={newChat}>
-                  <Plus className="h-3.5 w-3.5" /> New chat
-                </Button>
-              </div>
-            )}
-            {messages.length === 0 && (
+            {isLoadingChat && <p className="mt-10 text-center text-sm text-muted-foreground">Loading chat…</p>}
+            {messages.length === 0 && !isLoadingChat && (
               <div className="mt-10 text-center md:mt-20">
                 <p className="text-lg font-medium text-foreground/80">Ask your financial documents something</p>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -211,8 +214,11 @@ export default function AskPage({ user, hidden, onSessionExpired, onNavigate }) 
               rows={1}
               className="min-w-0 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-[15px] shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
-            <Button type="submit" disabled={isStreaming || !value.trim()}>Send</Button>
+            <Button type="submit" disabled={isStreaming || isLoadingChat || !value.trim()}>Send</Button>
           </div>
+          <p className="mx-auto mt-2 max-w-2xl text-xs text-muted-foreground">
+            Follow-up questions work: the last few messages in this chat are used to understand what you mean.
+          </p>
         </form>
       </div>
 
@@ -257,6 +263,14 @@ function AssistantMessage({ message: m, onSourceClick, onCheck }) {
           </div>
         )}
         {m.error && <p className="mt-1 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{m.error}</p>}
+
+        {/* For a follow-up, show what was actually searched for, so a misread question is easy to spot. */}
+        {m.searchQuery && m.searchQuery.trim() !== m.query?.trim() && (
+          <p className="mt-3 flex items-start gap-1.5 text-xs text-muted-foreground">
+            <Search className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>Searched for: <span className="text-foreground/80">{m.searchQuery}</span></span>
+          </p>
+        )}
 
         {m.sources?.length > 0 && (
           <div className="mt-3">

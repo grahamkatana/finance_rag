@@ -26,11 +26,14 @@ def process_query_audit(
     embed_model_used: str,
     duration_ms: float,
     client_id: str = "anonymous",
+    search_query: str | None = None,
 ):
     try:
         log.info(f"Processing audit for query: {query[:50]}...")
+        # `query` is what the user typed (and what the Activity page shows);
+        # relevance is judged against what was actually searched for.
         faithfulness, relevance = asyncio.run(
-            _run_eval(query=query, answer=answer, chunks=chunks)
+            _run_eval(query=search_query or query, answer=answer, chunks=chunks)
         )
         asyncio.run(
             _write_audit(

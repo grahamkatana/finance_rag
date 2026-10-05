@@ -18,7 +18,9 @@ class GenerationService:
         self,
         query: str,
         chunks: list[dict],
+        history: list[dict] | None = None,
+        asked: str | None = None,
     ) -> AsyncGenerator[str, None]:
-        prompt = build_generation_prompt(query=query, chunks=chunks)
+        prompt = build_generation_prompt(query=query, chunks=chunks, history=history, asked=asked)
         async for token in self.llm.stream(prompt):
             yield token
