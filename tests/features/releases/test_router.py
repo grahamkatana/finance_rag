@@ -194,3 +194,46 @@ async def test_a_deletion_is_committed_before_the_response_is_sent(service, as_a
     assert (await _request("DELETE", "/api/v1/releases/1")).status_code == 200
     fake_db.commit.assert_awaited_once()
 
+
+
+# ---- the public link to the newest version ----
+
+@pytest.mark.asyncio
+async def test_the_public_link_serves_the_newest_version(service):
+    response = await _request("GET", "/api/v1/releases/latest/apk")
+    assert response.status_code == 200
+    assert response.content == APK
+    service.get_file.assert_awaited_once_with(2)  # the highest version code, not the first published
+    assert response.headers["content-disposition"] == 'attachment; filename="finance-rag-0.2.0.apk"'
+    assert response.headers["content-type"] == "application/vnd.android.package-archive"
+    assert response.headers["cache-control"] == "no-cache"
+
+
+@pytest.mark.asyncio
+async def test_the_public_link_needs_no_login(service):
+    from app.core.auth import get_current_user
+    saved = app.dependency_overrides.pop(get_current_user)  # the suite logs everyone in; take that away
+    try:
+        assert (await _request("GET", "/api/v1/releases/latest/apk")).status_code == 200
+        assert (await _request("GET", "/api/v1/releases")).status_code in (401, 403), "the list must still need a login"
+    finally:
+        app.dependency_overrides[get_current_user] = saved
+
+
+@pytest.mark.asyncio
+async def test_the_public_link_is_404_before_anything_is_published(service):
+    service.list_releases.return_value = []
+    response = await _request("GET", "/api/v1/releases/latest/apk")
+    assert response.status_code == 404
+    service.get_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_public_link_is_rate_limited(service):
+    busy = MagicMock()
+    busy.pipeline.return_value.execute = AsyncMock(return_value=(releases_router.PUBLIC_DOWNLOADS_PER_MINUTE + 1, True))
+    busy.ttl = AsyncMock(return_value=30)
+    with patch("app.core.rate_limit._get_client", return_value=busy):
+        response = await _request("GET", "/api/v1/releases/latest/apk")
+    assert response.status_code == 429
+    service.get_file.assert_not_awaited()

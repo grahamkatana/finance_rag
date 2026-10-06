@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import TokenUser, get_current_user, require_admin
 from app.core.database import get_db
+from app.core.rate_limit import ip_rate_limit
 from app.features.releases.service import (
     DOWNLOAD_LINK_SECONDS,
     MAX_APK_BYTES,
@@ -17,6 +18,8 @@ from app.features.releases.service import (
 )
 
 router = APIRouter(prefix="/api/v1/releases", tags=["releases"])
+
+PUBLIC_DOWNLOADS_PER_MINUTE = 10
 
 NOT_FOUND = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Release not found")
 
@@ -67,6 +70,38 @@ async def upload_release(
     return release_dict(release, latest)
 
 
+def _apk_response(release, data: bytes, cache: str) -> Response:
+    return Response(
+        content=data,
+        media_type="application/vnd.android.package-archive",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename_for(release)}"',
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": cache,
+        },
+    )
+
+
+@router.get(
+    "/latest/apk",
+    dependencies=[Depends(ip_rate_limit(PUBLIC_DOWNLOADS_PER_MINUTE, "apk-download"))],
+)
+async def download_latest(db: AsyncSession = Depends(get_db)):
+    """The newest version of the Android app, with no login: one fixed link to share.
+
+    This is deliberately public. The app is useless without an account, and the file holds
+    no secret (only the server's public address). It is rate-limited per address because
+    each download reads several megabytes from the database.
+    """
+    service = ReleaseService(db)
+    releases = await service.list_releases()
+    data = await service.get_file(releases[0].id) if releases else None
+    if data is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No Android app has been published yet.")
+    # "no-cache": a browser may keep the file but must ask before reusing it, so the link always gives the current version.
+    return _apk_response(releases[0], data, "no-cache")
+
+
 @router.post("/{release_id}/download-url")
 async def download_url(
     release_id: int,
@@ -98,15 +133,7 @@ async def download_file(
     data = await service.get_file(release_id)
     if release is None or data is None:
         raise NOT_FOUND
-    return Response(
-        content=data,
-        media_type="application/vnd.android.package-archive",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename_for(release)}"',
-            "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "private, no-store",
-        },
-    )
+    return _apk_response(release, data, "private, no-store")
 
 
 @router.delete("/{release_id}")

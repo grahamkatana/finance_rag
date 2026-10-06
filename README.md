@@ -404,6 +404,7 @@ downloaded again. The web app shows them on its **Android app** page; admins pub
 | POST | `/api/v1/releases` | Publish a version (admin). Multipart: `file`, `version_name`, `version_code`, `notes`. |
 | POST | `/api/v1/releases/{id}/download-url` | A link to the file, valid for 2 minutes. |
 | GET | `/api/v1/releases/{id}/file?t=...` | The APK, as an attachment. The token replaces the login header, which a plain browser link cannot send. |
+| GET | `/api/v1/releases/latest/apk` | The newest APK with **no login**: the one link to share. Limited to 10 downloads a minute per address. |
 | DELETE | `/api/v1/releases/{id}` | Delete a version (admin). |
 
 A version code must be higher than every earlier one (Android uses it to decide what is newer). Uploads are limited
