@@ -14,13 +14,18 @@ that lives in the Android Keystore, and the signing key is kept outside the repo
 ## What it does
 
 - Log in with the username and password an administrator gave you (there is no sign-up).
+- **Your own server**: tap the "Server:" line on the login screen to enter the address of a
+  different Finance RAG server. Leave it empty to go back to the standard one. It must be an
+  `https` address, and it can only be changed while logged out, so a login is never sent to a
+  server other than the one that issued it.
 - Ask a question; the answer streams in as it is written, with tables and bold text rendered.
 - Tap a numbered source under an answer to read the exact passage it was built from.
 - Ask a follow-up ("and services?"). The app shows what the question was understood as.
 - Open the menu to switch between saved chats or start a new one.
+- Open **Documents** from the menu to upload a PDF (up to 50 MB), see your documents, delete one,
+  or share one with another person by their email address.
 
-Not built yet: checking an answer's quality score, uploading and sharing documents,
-admin screens. Those exist in the web app.
+Not built yet: checking an answer's quality score, admin screens. Those exist in the web app.
 
 ## Step by step: build and install it yourself
 
@@ -156,8 +161,8 @@ files mention these words only as variable names.)
 
 ```
 app/src/main/java/com/graham_katana/financerag/
-  data/   ApiClient (login, automatic token refresh, streaming), TokenStore (Keystore), Models
-  ui/     LoginScreen, ChatScreen, MarkdownText, view models, theme
+  data/   ApiClient (login, automatic token refresh, streaming, documents), TokenStore (Keystore), Models
+  ui/     LoginScreen, ChatScreen, DocumentsScreen, MarkdownText, view models, theme
 app/src/test/                  JVM unit tests: API client (fake server), view models, markdown parser
 notes/                         why each decision was made (read these before changing anything)
 ```

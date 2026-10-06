@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MessageSquareText, FileText, Activity, Users, LogOut, Landmark, Plus, MoreHorizontal, Trash2, Smartphone } from "lucide-react";
+import { MessageSquareText, FileText, Activity, Users, LogOut, Plus, MoreHorizontal, Trash2, Smartphone } from "lucide-react";
 import { Button } from "./ui/Button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "./ui/DropdownMenu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/Dialog";
@@ -38,9 +38,7 @@ export default function Sidebar({ user, onLogout, activePage, onNavigate, open, 
       )}
     >
       <div className="flex items-center gap-2 border-b border-border px-4 py-4">
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          <Landmark className="h-4 w-4" />
-        </span>
+        <img src="/logo.png" alt="" className="h-7 w-7 rounded-md" />
         <span className="font-display text-base font-semibold text-foreground">Finance RAG</span>
       </div>
 

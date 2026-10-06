@@ -18,13 +18,16 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 
 @Serializable private data class LoginBody(val username: String, val password: String)
 @Serializable private data class RefreshBody(@SerialName("refresh_token") val refreshToken: String)
+@Serializable private data class ShareBody(@SerialName("file_name") val fileName: String, @SerialName("user_email") val userEmail: String)
 @Serializable private data class GenerateBody(val query: String, @SerialName("top_n") val topN: Int, @SerialName("chat_id") val chatId: Long?)
 
 /**
@@ -33,13 +36,19 @@ import okhttp3.Response
  * is retried once, so an expired token is invisible to the person using the app.
  */
 class ApiClient(
-    baseUrl: String,
+    /** Asked on every call, so a server address changed on the login screen takes effect at once. */
+    private val baseUrl: () -> String,
     private val tokens: TokenStore,
     private val http: OkHttpClient = defaultHttp(),
 ) : FinanceApi {
-    private val base = baseUrl.trimEnd('/')
+    private val base: String get() = baseUrl().trimEnd('/')
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
     private val jsonType = "application/json".toMediaType()
+    // An upload sends megabytes, and the API can be silent for a while as it embeds a long document.
+    private val uploadHttp = http.newBuilder()
+        .writeTimeout(2, java.util.concurrent.TimeUnit.MINUTES)
+        .readTimeout(10, java.util.concurrent.TimeUnit.MINUTES)
+        .build()
     private val refreshLock = Mutex() // several calls can hit a 401 together; only one may spend the refresh token
 
     override suspend fun login(username: String, password: String) {
@@ -85,24 +94,61 @@ class ApiClient(
         }
     }.flowOn(Dispatchers.IO)
 
+    override suspend fun documents(): List<Document> =
+        authed("/api/v1/ingestion/documents") { json.decodeFromString<DocumentList>(it.body!!.string()).documents }
+
+    /**
+     * The API answers with server-sent events, one `data: {json}` line per step.
+     * A refusal before the work starts (not a PDF, already uploaded) is an ordinary HTTP error.
+     */
+    override fun uploadPdf(fileName: String, bytes: ByteArray, source: String): Flow<UploadEvent> = flow {
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("source", source)
+            .addFormDataPart("file", fileName, bytes.toRequestBody("application/pdf".toMediaType()))
+            .build()
+        sendAuthed(uploadHttp) { token -> Request.Builder().url("$base/api/v1/ingestion/upload").header("Authorization", "Bearer $token").post(body).build() }.use { response ->
+            if (!response.isSuccessful) throw failure(response)
+            val lines = response.body!!.source()
+            while (true) {
+                val line = try { lines.readUtf8Line() } catch (e: IOException) { throw ApiException.Network() } ?: break
+                if (line.startsWith("data:")) emit(json.decodeFromString<UploadEvent>(line.removePrefix("data:").trim()))
+            }
+        }
+    }.flowOn(Dispatchers.IO)
+
+    override suspend fun deleteDocument(fileName: String) =
+        authed("/api/v1/ingestion/documents/${segment(fileName)}", "DELETE") { }
+
+    override suspend fun shares(fileName: String): List<String> =
+        authed("/api/v1/ingestion/shares/${segment(fileName)}") { json.decodeFromString<ShareList>(it.body!!.string()).shares.mapNotNull { s -> s.email } }
+
+    override suspend fun share(fileName: String, email: String) =
+        authed("/api/v1/ingestion/shares", "POST", json.encodeToString(ShareBody(fileName, email)).toRequestBody(jsonType)) { }
+
+    override suspend fun unshare(fileName: String, email: String) =
+        authed("/api/v1/ingestion/shares", "DELETE", json.encodeToString(ShareBody(fileName, email)).toRequestBody(jsonType)) { }
+
     // ---- plumbing ----
 
-    private suspend fun <T> authed(path: String, parse: (Response) -> T): T = withContext(Dispatchers.IO) {
-        sendAuthed { token -> Request.Builder().url("$base$path").header("Authorization", "Bearer $token").get().build() }.use { response ->
+    /** A file name as one URL path segment: spaces and slashes in it must not change the path. */
+    private fun segment(name: String) = java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20")
+
+    private suspend fun <T> authed(path: String, method: String = "GET", body: RequestBody? = null, parse: (Response) -> T): T = withContext(Dispatchers.IO) {
+        sendAuthed { token -> Request.Builder().url("$base$path").header("Authorization", "Bearer $token").method(method, body).build() }.use { response ->
             if (!response.isSuccessful) throw failure(response)
             parse(response)
         }
     }
 
     /** Sends a request with the access token; on 401 refreshes once and retries. Blocking: call from IO. */
-    private suspend fun sendAuthed(build: (String) -> Request): Response {
+    private suspend fun sendAuthed(client: OkHttpClient = http, build: (String) -> Request): Response {
         val first = tokens.load() ?: throw ApiException.SessionExpired()
-        val response = call(build(first.accessToken))
+        val response = call(build(first.accessToken), client)
         if (response.code != 401) return response
         response.close()
         if (!refresh(staleAccessToken = first.accessToken)) throw ApiException.SessionExpired()
         val second = tokens.load() ?: throw ApiException.SessionExpired()
-        val retry = call(build(second.accessToken))
+        val retry = call(build(second.accessToken), client)
         if (retry.code == 401) {
             retry.close()
             tokens.clear()
@@ -126,8 +172,8 @@ class ApiClient(
         }
     }
 
-    private fun call(request: Request): Response = try {
-        http.newCall(request).execute()
+    private fun call(request: Request, client: OkHttpClient = http): Response = try {
+        client.newCall(request).execute()
     } catch (e: IOException) {
         throw ApiException.Network()
     }

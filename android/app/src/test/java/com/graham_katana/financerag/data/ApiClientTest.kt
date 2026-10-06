@@ -31,7 +31,7 @@ class ApiClientTest {
     @Before fun setUp() {
         server = MockWebServer().apply { start() }
         tokens = FakeTokenStore(Tokens("old-access", "old-refresh"))
-        api = ApiClient(server.url("/").toString(), tokens)
+        api = ApiClient({ server.url("/").toString() }, tokens)
     }
 
     @After fun tearDown() = server.shutdown()
@@ -201,5 +201,59 @@ class ApiClientTest {
     @Test fun `continuing a chat that no longer exists is NotFound`() = runTest {
         server.enqueue(json("""{"detail":"Chat not found"}""", 404))
         assertThrows(ApiException.NotFound::class.java) { kotlinx.coroutines.runBlocking { api.streamAnswer("q", 5, 99).toList() } }
+    }
+
+    // ---- documents ----
+
+    @Test fun `an upload sends the PDF and its source, and reports each step`() = runTest {
+        server.enqueue(MockResponse().setHeader("Content-Type", "text/event-stream").setBody(
+            "data: {\"status\": \"saving\", \"message\": \"Writing\", \"progress\": 10, \"total\": 40}\n\n" +
+                "data: {\"status\": \"done\", \"message\": \"Ingestion complete\", \"file_name\": \"10k.pdf\", \"chunks_ingested\": 40}\n\n"
+        ))
+        val events = api.uploadPdf("10k.pdf", "%PDF-1.7".toByteArray(), "sec.gov").toList()
+        assertEquals(listOf(UploadEvent("saving", "Writing", 10, 40), UploadEvent("done", "Ingestion complete")), events)
+        val sent = server.takeRequest()
+        assertEquals("/api/v1/ingestion/upload", sent.path)
+        assertEquals("Bearer old-access", sent.getHeader("Authorization"))
+        val body = sent.body.readUtf8()
+        assertTrue(body.contains("name=\"source\"") && body.contains("sec.gov"))
+        assertTrue(body.contains("filename=\"10k.pdf\"") && body.contains("Content-Type: application/pdf") && body.contains("%PDF-1.7"))
+    }
+
+    @Test fun `an upload the API refuses carries its explanation`() = runTest {
+        server.enqueue(json("""{"detail":"10k.pdf has already been ingested. Delete it first to re-ingest."}""", 409))
+        val e = assertThrows(ApiException.Http::class.java) { kotlinx.coroutines.runBlocking { api.uploadPdf("10k.pdf", ByteArray(1), "x").toList() } }
+        assertEquals(409, e.code)
+        assertTrue(e.message!!.contains("already been ingested"))
+    }
+
+    @Test fun `a file name with spaces and a slash stays one path segment`() = runTest {
+        server.enqueue(json("""{"file_name":"a","chunks_deleted":3}"""))
+        api.deleteDocument("Q4 report/final.pdf")
+        val sent = server.takeRequest()
+        assertEquals("DELETE", sent.method)
+        assertEquals("/api/v1/ingestion/documents/Q4%20report%2Ffinal.pdf", sent.path)
+    }
+
+    @Test fun `documents and shares are read, and sharing is by email`() = runTest {
+        server.enqueue(json("""{"documents":[{"file_name":"10k.pdf","source":"sec.gov","chunk_count":40,"created_at":null,"is_owner":true}],"total":1}"""))
+        assertEquals(listOf(Document("10k.pdf", "sec.gov", 40, true)), api.documents())
+        server.takeRequest()
+
+        server.enqueue(json("""{"file_name":"10k.pdf","shares":[{"granted_to_user_id":2,"email":"ann@example.com","created_at":null},{"granted_to_user_id":3,"email":null}]}"""))
+        assertEquals(listOf("ann@example.com"), api.shares("10k.pdf"))
+        server.takeRequest()
+
+        server.enqueue(json("""{"file_name":"10k.pdf","shared_with":2}"""))
+        api.share("10k.pdf", "ann@example.com")
+        val shared = server.takeRequest()
+        assertEquals("POST /api/v1/ingestion/shares", "${shared.method} ${shared.path}")
+        assertEquals("""{"file_name":"10k.pdf","user_email":"ann@example.com"}""", shared.body.readUtf8())
+
+        server.enqueue(json("""{"file_name":"10k.pdf","removed":1}"""))
+        api.unshare("10k.pdf", "ann@example.com")
+        val removed = server.takeRequest()
+        assertEquals("DELETE /api/v1/ingestion/shares", "${removed.method} ${removed.path}")
+        assertEquals("""{"file_name":"10k.pdf","user_email":"ann@example.com"}""", removed.body.readUtf8())
     }
 }

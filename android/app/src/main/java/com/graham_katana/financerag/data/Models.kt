@@ -46,6 +46,34 @@ data class ChatDetail(
     val messages: List<ChatMessageDto>,
 )
 
+/** A document the person can ask about: one they uploaded, or one shared with them. */
+@Serializable
+data class Document(
+    @SerialName("file_name") val fileName: String,
+    val source: String = "",
+    @SerialName("chunk_count") val chunkCount: Int = 0,
+    /** False = shared with you: you can ask about it, but not share or delete it. */
+    @SerialName("is_owner") val isOwner: Boolean = false,
+)
+
+@Serializable
+internal data class DocumentList(val documents: List<Document>)
+
+@Serializable
+internal data class ShareDto(val email: String? = null)
+
+@Serializable
+internal data class ShareList(val shares: List<ShareDto>)
+
+/** One step of an upload as the API reports it: extracting, chunking, embedding, storing, saving, done, or error. */
+@Serializable
+data class UploadEvent(
+    val status: String,
+    val message: String = "",
+    val progress: Int? = null,
+    val total: Int? = null,
+)
+
 /** What streaming an answer produces, in order: the chat's id once, then the text in pieces. */
 sealed interface StreamEvent {
     data class Chat(val id: Long) : StreamEvent
@@ -70,5 +98,13 @@ interface FinanceApi {
     fun streamAnswer(query: String, topN: Int, chatId: Long?): kotlinx.coroutines.flow.Flow<StreamEvent>
     suspend fun chats(): List<ChatSummary>
     suspend fun chat(id: Long): ChatDetail
+    suspend fun documents(): List<Document>
+    /** Uploads a PDF and reports each step until "done" (or "error"). */
+    fun uploadPdf(fileName: String, bytes: ByteArray, source: String): kotlinx.coroutines.flow.Flow<UploadEvent>
+    suspend fun deleteDocument(fileName: String)
+    /** Email addresses a document of yours is shared with. */
+    suspend fun shares(fileName: String): List<String>
+    suspend fun share(fileName: String, email: String)
+    suspend fun unshare(fileName: String, email: String)
     fun logout()
 }

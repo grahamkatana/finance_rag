@@ -24,8 +24,8 @@ android {
         applicationId = "com.graham_katana.financerag"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 5
+        versionName = "0.2.2"
 
         // The public API address is the only value allowed in source control.
         val apiBaseUrl = local.getProperty("api.baseUrl") ?: "https://finance.tekbridge.co.za"

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -72,7 +73,7 @@ private val SUGGESTIONS = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(viewModel: ChatViewModel, onLogout: () -> Unit) {
+fun ChatScreen(viewModel: ChatViewModel, onDocuments: () -> Unit, onLogout: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -102,6 +103,7 @@ fun ChatScreen(viewModel: ChatViewModel, onLogout: () -> Unit) {
                     Text("Finance RAG", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                     OutlinedButton(
                         onClick = { viewModel.newChat(); scope.launch { drawer.close() } },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
                         modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
                     ) { Icon(Icons.Default.Add, null); Text("  New chat") }
                     Text("Chats", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 24.dp, top = 16.dp, bottom = 4.dp))
@@ -116,7 +118,8 @@ fun ChatScreen(viewModel: ChatViewModel, onLogout: () -> Unit) {
                         if (state.chats.isEmpty()) item { Text("Your chats will appear here.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp)) }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-                    TextButton(onClick = onLogout, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Log out") }
+                    TextButton(onClick = { onDocuments(); scope.launch { drawer.close() } }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface), modifier = Modifier.padding(horizontal = 8.dp)) { Text("Documents") }
+                    TextButton(onClick = onLogout, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface), modifier = Modifier.padding(horizontal = 8.dp)) { Text("Log out") }
                 }
             }
         },
@@ -128,8 +131,8 @@ fun ChatScreen(viewModel: ChatViewModel, onLogout: () -> Unit) {
                     navigationIcon = { IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, "Chats") } },
                     actions = { IconButton(onClick = viewModel::newChat) { Icon(Icons.Default.Add, "New chat") } },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = TopBarGreen,
-                        scrolledContainerColor = TopBarGreen,
+                        containerColor = Green,
+                        scrolledContainerColor = Green,
                         titleContentColor = MaterialTheme.colorScheme.onBackground,
                         navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
                         actionIconContentColor = MaterialTheme.colorScheme.onBackground,
@@ -174,7 +177,7 @@ fun ChatScreen(viewModel: ChatViewModel, onLogout: () -> Unit) {
         ModalBottomSheet(onDismissRequest = { openSource = null }) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Source $index", style = MaterialTheme.typography.titleMedium)
-                Text(source.fileName, style = MaterialTheme.typography.bodyMedium, color = GreenText)
+                Text(source.fileName, style = MaterialTheme.typography.bodyMedium)
                 Text("Passage ${source.chunkIndex}" + if (source.source.isNotBlank()) " · from ${source.source}" else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                 SelectionContainer { Text(source.chunkText, style = MaterialTheme.typography.bodyMedium) }
@@ -189,7 +192,7 @@ private fun EmptyState(onPick: (String) -> Unit) {
         Text("Ask your financial documents something", style = MaterialTheme.typography.titleMedium)
         Text("Answers use only documents you can access, and cite their sources.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 20.dp))
         SUGGESTIONS.forEach { suggestion ->
-            OutlinedButton(onClick = { onPick(suggestion) }, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            OutlinedButton(onClick = { onPick(suggestion) }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                 Text(suggestion, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium)
             }
         }
@@ -232,9 +235,9 @@ private fun AnswerView(message: UiMessage, onSource: (Int, Source) -> Unit) {
                     Text(fileName, style = MaterialTheme.typography.bodySmall, modifier = Modifier.align(Alignment.CenterVertically).widthIn(max = 220.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     passages.forEach { (index, source) ->
                         Box(
-                            Modifier.heightIn(min = 28.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape).clickable { onSource(index + 1, source) }.padding(horizontal = 11.dp),
+                            Modifier.heightIn(min = 28.dp).background(MaterialTheme.colorScheme.primary, CircleShape).clickable { onSource(index + 1, source) }.padding(horizontal = 11.dp),
                             contentAlignment = Alignment.Center,
-                        ) { Text("${index + 1}", style = MaterialTheme.typography.labelMedium, color = GreenText) }
+                        ) { Text("${index + 1}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimary) }
                     }
                 }
             }

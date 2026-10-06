@@ -20,6 +20,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.graham_katana.financerag.ui.ChatScreen
 import com.graham_katana.financerag.ui.ChatViewModel
+import com.graham_katana.financerag.ui.DocumentsScreen
+import com.graham_katana.financerag.ui.DocumentsViewModel
 import com.graham_katana.financerag.ui.FinanceRagTheme
 import com.graham_katana.financerag.ui.LoginScreen
 import com.graham_katana.financerag.ui.LoginViewModel
@@ -42,12 +44,17 @@ class MainActivity : ComponentActivity() {
                     var loggedIn by remember { mutableStateOf(app.tokens.load() != null) }
                     // A new number per login, so a new person never sees the previous person's chats.
                     var session by remember { mutableIntStateOf(0) }
+                    var showDocuments by remember { mutableStateOf(false) }
                     if (loggedIn) {
                         val chat: ChatViewModel = viewModel(key = "chat-$session", factory = viewModelFactory { initializer { ChatViewModel(app.api) } })
-                        ChatScreen(chat, onLogout = { app.api.logout(); loggedIn = false; session++ })
+                        val documents: DocumentsViewModel = viewModel(key = "documents-$session", factory = viewModelFactory { initializer { DocumentsViewModel(app.api) } })
+                        val logout: () -> Unit = { app.api.logout(); loggedIn = false; showDocuments = false; session++ }
+                        // The documents model outlives its screen, so an upload keeps going while you go back to the chat.
+                        if (showDocuments) DocumentsScreen(documents, onBack = { showDocuments = false }, onLogout = logout)
+                        else ChatScreen(chat, onDocuments = { documents.refresh(); showDocuments = true }, onLogout = logout)
                     } else {
                         val login: LoginViewModel = viewModel(key = "login-$session", factory = viewModelFactory { initializer { LoginViewModel(app.api) } })
-                        LoginScreen(login, onLoggedIn = { loggedIn = true })
+                        LoginScreen(login, app.server, onLoggedIn = { loggedIn = true })
                     }
                 }
             }

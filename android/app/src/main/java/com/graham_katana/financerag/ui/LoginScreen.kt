@@ -1,6 +1,7 @@
 package com.graham_katana.financerag.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,49 +31,53 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.graham_katana.financerag.data.ServerSettings
 
 @Composable
-fun LoginScreen(viewModel: LoginViewModel, onLoggedIn: () -> Unit) {
+fun LoginScreen(viewModel: LoginViewModel, server: ServerSettings, onLoggedIn: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     val submit = { viewModel.submit(username, password, onLoggedIn) }
 
-    Column(
-        Modifier.fillMaxSize().safeDrawingPadding().imePadding().verticalScroll(rememberScrollState()).padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Column(Modifier.widthIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Finance RAG", style = MaterialTheme.typography.headlineMedium)
-            Text("Ask questions of your financial documents", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().safeDrawingPadding().imePadding().verticalScroll(rememberScrollState()).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Column(Modifier.widthIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Finance RAG", style = MaterialTheme.typography.headlineMedium)
+                Text("Ask questions of your financial documents", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
 
-            state.error?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth())
-            }
+                state.error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth())
+                }
 
-            OutlinedTextField(
-                value = username,
-                onValueChange = { username = it },
-                label = { Text("Username") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, autoCorrectEnabled = false, imeAction = ImeAction.Next),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Password") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submit() }),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Button(onClick = { submit() }, enabled = !state.isSubmitting, modifier = Modifier.fillMaxWidth()) {
-                if (state.isSubmitting) CircularProgressIndicator(Modifier.padding(vertical = 2.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Log in")
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text("Username") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, autoCorrectEnabled = false, imeAction = ImeAction.Next),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(onClick = { submit() }, enabled = !state.isSubmitting, modifier = Modifier.fillMaxWidth()) {
+                    if (state.isSubmitting) CircularProgressIndicator(Modifier.padding(vertical = 2.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Log in")
+                }
+                Text("Accounts are created by an administrator.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text("Accounts are created by an administrator.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        ServerSetting(server, Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(4.dp))
     }
 }
