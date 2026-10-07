@@ -91,6 +91,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # SonarQube needs the full history to blame code correctly
 
       - name: Wait for Qdrant
         run: |
@@ -118,7 +120,17 @@ jobs:
         run: uv run alembic upgrade head
 
       - name: Run tests
-        run: uv run pytest tests/ -v --timeout=30 --tb=short
+        run: uv run pytest tests/ -v --timeout=30 --tb=short --cov=app --cov-report=xml
+
+      # Code quality scan. It only reports: it never fails the build (continue-on-error), and it does not
+      # wait for the quality gate. A missing token or a Sonar outage shows up as a warning here.
+      - name: SonarQube scan
+        if: always()
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
       - name: Upload test results
         if: always()

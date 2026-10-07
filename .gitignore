@@ -35,3 +35,8 @@ android/keystore.properties
 *.p12
 *.apk
 
+
+# test coverage output
+.coverage
+coverage.xml
+.scannerwork/
