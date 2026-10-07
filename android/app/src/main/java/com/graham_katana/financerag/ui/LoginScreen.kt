@@ -16,7 +16,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -54,19 +53,17 @@ fun LoginScreen(viewModel: LoginViewModel, server: ServerSettings, onLoggedIn: (
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth())
                 }
 
-                OutlinedTextField(
+                CompactField(
                     value = username,
                     onValueChange = { username = it },
-                    label = { Text("Username") },
-                    singleLine = true,
+                    label = "Username",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, autoCorrectEnabled = false, imeAction = ImeAction.Next),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
+                CompactField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Password") },
-                    singleLine = true,
+                    label = "Password",
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { submit() }),

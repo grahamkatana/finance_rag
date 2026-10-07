@@ -174,25 +174,17 @@ fun ChatScreen(viewModel: ChatViewModel, onDocuments: () -> Unit, onLogout: () -
             },
             bottomBar = {
                 Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.navigationBarsPadding().imePadding()) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom) {
-                        OutlinedTextField(
-                            value = draft,
-                            onValueChange = { draft = it },
-                            placeholder = { Text(if (listener.listening) "Listening…" else listener.error ?: "Ask about your documents…") },
-                            maxLines = 5,
-                            modifier = Modifier.weight(1f),
-                        )
-                        IconButton(
-                            onClick = tapMic,
-                            enabled = !state.isStreaming && !state.isLoadingChat,
-                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp).background(if (listener.listening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceVariant, CircleShape),
-                        ) { Icon(if (listener.listening) VoiceIcons.Stop else VoiceIcons.Mic, if (listener.listening) "Stop dictating" else "Speak your question", tint = if (listener.listening) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurfaceVariant) }
-                        IconButton(
-                            onClick = send,
-                            enabled = draft.isNotBlank() && !state.isStreaming && !state.isLoadingChat,
-                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = if (draft.isNotBlank() && !state.isStreaming) 1f else 0.35f), CircleShape),
-                        ) { Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = MaterialTheme.colorScheme.onPrimary) }
-                    }
+                    ChatInput(
+                        draft = draft,
+                        onDraft = { draft = it },
+                        placeholder = if (listener.listening) "Listening…" else listener.error ?: "Ask about your documents…",
+                        listening = listener.listening,
+                        canSend = draft.isNotBlank() && !state.isStreaming && !state.isLoadingChat,
+                        busy = state.isStreaming || state.isLoadingChat,
+                        onSend = send,
+                        onMic = tapMic,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
                 }
             },
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
