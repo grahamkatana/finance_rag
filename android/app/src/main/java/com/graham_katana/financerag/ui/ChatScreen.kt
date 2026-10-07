@@ -1,5 +1,9 @@
 package com.graham_katana.financerag.ui
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,6 +61,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,6 +85,29 @@ fun ChatScreen(viewModel: ChatViewModel, onDocuments: () -> Unit, onLogout: () -
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     var draft by rememberSaveable { mutableStateOf("") }
+    var readAloud by rememberSaveable { mutableStateOf(false) }
+    val speaker = rememberSpeaker()
+    val feed = remember { SpeechFeed() }
+    var streamedId by remember { mutableStateOf<Long?>(null) }
+    var dictationBase by remember { mutableStateOf("") }
+    val listener = rememberListener { text, _ -> draft = (dictationBase + " " + text).trim() }
+    val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) { speaker.stop(); dictationBase = draft; listener.start() } }
+    val tapMic = {
+        when {
+            listener.listening -> listener.stop()
+            listener.permitted -> { speaker.stop(); dictationBase = draft; listener.start() }
+            else -> askMic.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+    // Read a new answer aloud as it arrives, one sentence at a time. An answer that was already on screen is never read unasked.
+    val last = state.messages.lastOrNull()
+    LaunchedEffect(last?.id, last?.text, state.isStreaming, readAloud) {
+        if (last == null || last.fromUser) return@LaunchedEffect
+        if (state.isStreaming) streamedId = last.id
+        if (readAloud && streamedId == last.id) feed.next(last.id, last.text, !state.isStreaming)?.let(speaker::say)
+    }
+    LaunchedEffect(readAloud) { if (!readAloud) speaker.stop() }
+    LaunchedEffect(state.chatId, state.isLoadingChat) { speaker.stop(); feed.reset(); streamedId = null }
     var openSource by remember { mutableStateOf<Pair<Int, Source>?>(null) }
 
     LaunchedEffect(state.sessionExpired) { if (state.sessionExpired) onLogout() }
@@ -90,6 +119,7 @@ fun ChatScreen(viewModel: ChatViewModel, onDocuments: () -> Unit, onLogout: () -
     val send = {
         val text = draft
         if (text.isNotBlank() && !state.isStreaming && !state.isLoadingChat) {
+            speaker.stop(); feed.reset(); if (listener.listening) listener.stop()
             viewModel.send(text)
             draft = ""
         }
@@ -129,7 +159,10 @@ fun ChatScreen(viewModel: ChatViewModel, onDocuments: () -> Unit, onLogout: () -
                 TopAppBar(
                     title = { Text(state.chats.firstOrNull { it.id == state.chatId }?.title ?: "New chat", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     navigationIcon = { IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, "Chats") } },
-                    actions = { IconButton(onClick = viewModel::newChat) { Icon(Icons.Default.Add, "New chat") } },
+                    actions = {
+                        IconButton(onClick = { readAloud = !readAloud }) { Icon(VoiceIcons.Speaker, if (readAloud) "Turn off read aloud" else "Read answers aloud", tint = LocalContentColor.current.copy(alpha = if (readAloud) 1f else 0.45f)) }
+                        IconButton(onClick = viewModel::newChat) { Icon(Icons.Default.Add, "New chat") }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Green,
                         scrolledContainerColor = Green,
@@ -145,10 +178,15 @@ fun ChatScreen(viewModel: ChatViewModel, onDocuments: () -> Unit, onLogout: () -
                         OutlinedTextField(
                             value = draft,
                             onValueChange = { draft = it },
-                            placeholder = { Text("Ask about your documents…") },
+                            placeholder = { Text(if (listener.listening) "Listening…" else listener.error ?: "Ask about your documents…") },
                             maxLines = 5,
                             modifier = Modifier.weight(1f),
                         )
+                        IconButton(
+                            onClick = tapMic,
+                            enabled = !state.isStreaming && !state.isLoadingChat,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp).background(if (listener.listening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                        ) { Icon(if (listener.listening) VoiceIcons.Stop else VoiceIcons.Mic, if (listener.listening) "Stop dictating" else "Speak your question", tint = if (listener.listening) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurfaceVariant) }
                         IconButton(
                             onClick = send,
                             enabled = draft.isNotBlank() && !state.isStreaming && !state.isLoadingChat,
@@ -165,7 +203,7 @@ fun ChatScreen(viewModel: ChatViewModel, onDocuments: () -> Unit, onLogout: () -
                     state.messages.isEmpty() -> EmptyState(onPick = { viewModel.send(it) })
                     else -> LazyColumn(state = listState, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                         items(state.messages, key = { it.id }) { message ->
-                            if (message.fromUser) UserBubble(message) else AnswerView(message, onSource = { index, source -> openSource = index to source })
+                            if (message.fromUser) UserBubble(message) else AnswerView(message, onSource = { index, source -> openSource = index to source }, speaker = speaker, onSpeak = { feed.reset(); streamedId = null })
                         }
                     }
                 }
@@ -212,13 +250,14 @@ private fun UserBubble(message: UiMessage) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AnswerView(message: UiMessage, onSource: (Int, Source) -> Unit) {
+private fun AnswerView(message: UiMessage, onSource: (Int, Source) -> Unit, speaker: Speaker, onSpeak: () -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         when {
             message.error != null -> Text(message.error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             message.text.isEmpty() -> Text("Searching your documents…", color = MaterialTheme.colorScheme.onSurfaceVariant)
             else -> SelectionContainer { MarkdownText(message.text) }
         }
+        if (message.done && message.error == null && message.text.isNotEmpty()) ReadButton(speaker) { speaker.stop(); onSpeak(); speaker.say(speakable(message.text)) }
         // For a follow-up, show what was actually searched for, so a misread question is easy to spot.
         message.searchQuery?.takeIf { it.isNotBlank() }?.let {
             Text("Searched for: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -242,5 +281,19 @@ private fun AnswerView(message: UiMessage, onSource: (Int, Source) -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** Reads one answer aloud, or stops the voice if it is already talking. */
+@Composable
+private fun ReadButton(speaker: Speaker, onRead: () -> Unit) {
+    if (!speaker.ready) return
+    TextButton(
+        onClick = { if (speaker.speaking) speaker.stop() else onRead() },
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+    ) {
+        Icon(if (speaker.speaking) VoiceIcons.Stop else VoiceIcons.Speaker, null, Modifier.size(18.dp))
+        Text(if (speaker.speaking) "  Stop" else "  Read aloud", style = MaterialTheme.typography.labelMedium)
     }
 }

@@ -70,6 +70,12 @@ async def upload_pdf(
             error_message = str(e)
             yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
 
+        except Exception as e:
+            logger.exception(f"Ingestion failed for {file_name}")
+            status = "error"
+            error_message = f"{type(e).__name__}: {e}"
+            yield f"data: {json.dumps({'status': 'error', 'message': 'Ingestion failed. See the server log for details.'})}\n\n"
+
         finally:
             duration_ms = (time.perf_counter() - t0) * 1000
             process_ingestion_audit.delay(

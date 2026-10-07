@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     admin_username: str = ""
     admin_password: str = ""
 
+    # Optional: lets the admin usage page check DeepSeek's balance and OpenAI's month-to-date spend
+    deepseek_api_key: str = ""
+    openai_admin_key: str = ""
+
     # App
     app_env: str
     app_port: int

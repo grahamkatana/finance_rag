@@ -12,6 +12,7 @@ class EvalService:
             model=settings.judge_model,
             api_key=settings.judge_api_key,
             base_url=settings.judge_base_url,
+            kind="judge",
         )
 
     def parse_score(self, response: str) -> float:

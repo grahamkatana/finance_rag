@@ -1,10 +1,11 @@
+import asyncio
 import uuid
 from io import BytesIO
 from typing import AsyncGenerator
 
 from pypdf import PdfReader
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import PointStruct
+from qdrant_client.models import PointIdsList, PointStruct
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,9 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.features.ingestion.chunker import Chunker
 from app.features.ingestion.embedder import Embedder
+
+
+UPSERT_BATCH_SIZE = 200
 
 
 def extract_text(file_bytes: bytes) -> str:
@@ -62,7 +66,10 @@ class IngestionService:
         self.log.info(f"Starting ingestion: {file_name}")
         yield {"status": "extracting", "message": f"Extracting text from {file_name}..."}
 
-        raw_text = extract_text(file_bytes)
+        # pypdf and the chunker are synchronous and CPU-bound. A 500-page annual
+        # report takes ~47s, which froze the event loop, failed /health and got the
+        # pod killed by its liveness probe. Run both off the loop thread.
+        raw_text = await asyncio.to_thread(extract_text, file_bytes)
         if not raw_text.strip():
             self.log.error(f"No text extracted from {file_name}")
             raise ValueError("No text could be extracted from this PDF")
@@ -71,7 +78,7 @@ class IngestionService:
         yield {"status": "chunking", "message": f"Extracted {len(raw_text)} characters, chunking..."}
 
         chunker = Chunker()
-        chunks = chunker.chunk(raw_text)
+        chunks = await asyncio.to_thread(chunker.chunk, raw_text)
         if not chunks:
             raise ValueError("No text could be extracted from this PDF")
 
@@ -101,10 +108,21 @@ class IngestionService:
                 },
             ))
 
-        await self.qdrant.upsert(
-            collection_name=settings.qdrant_collection,
-            points=points,
-        )
+        # Qdrant rejects a request body over 32 MB. 1297 x 1536-dim vectors is 38 MB
+        # as one JSON upsert, so send in batches.
+        try:
+            for i in range(0, len(points), UPSERT_BATCH_SIZE):
+                await self.qdrant.upsert(
+                    collection_name=settings.qdrant_collection,
+                    points=points[i : i + UPSERT_BATCH_SIZE],
+                )
+        except Exception:
+            # Without Postgres rows these vectors would be orphans in search.
+            await self.qdrant.delete(
+                collection_name=settings.qdrant_collection,
+                points_selector=PointIdsList(points=qdrant_ids),
+            )
+            raise
 
         self.log.info("Qdrant upsert complete")
         yield {"status": "saving", "message": "Saving metadata to Postgres..."}

@@ -448,3 +448,34 @@ async def test_share_document_missing_fields_returns_422(mock_deps, mock_doc_svc
             "file_name": "apple_10k.pdf",
         })
     assert response.status_code == 422
+
+@pytest.mark.asyncio
+async def test_upload_unexpected_error_streams_error_and_audits_failure(mock_deps):
+    """A non-ValueError failure (e.g. Qdrant 400) must reach the client and be audited as an error"""
+    async def exploding_progress(*args, **kwargs):
+        yield {"status": "extracting", "message": "Extracting..."}
+        raise RuntimeError("qdrant rejected the payload")
+
+    with patch("app.features.ingestion.router.DocumentService") as mock_doc_svc, \
+         patch("app.features.ingestion.router.IngestionService") as mock_ing_svc, \
+         patch("app.features.ingestion.router.AsyncSessionLocal") as mock_session_local, \
+         patch("app.features.ingestion.router.process_ingestion_audit") as mock_audit:
+
+        _, mock_ing = setup_upload_mocks(mock_doc_svc, mock_ing_svc, mock_session_local)
+        mock_ing.ingest_with_progress = exploding_progress
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/v1/ingestion/upload",
+                files={"file": ("big.pdf", b"%PDF-1.4 mock", "application/pdf")},
+                data={"source": "https://sec.gov/big"},
+            )
+
+    assert '"status": "error"' in response.text
+    assert "qdrant rejected" not in response.text
+    kwargs = mock_audit.delay.call_args.kwargs
+    assert kwargs["status"] == "error"
+    assert "RuntimeError" in kwargs["error_message"]

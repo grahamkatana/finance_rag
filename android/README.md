@@ -13,6 +13,7 @@ that lives in the Android Keystore, and the signing key is kept outside the repo
 
 ## What it does
 
+- **Voice**: tap the microphone to dictate a question, and turn on the speaker icon (or tap Read aloud on an answer) to hear answers. Uses the phone's own speech services; no audio is stored. See notes/ for details.
 - Log in with the username and password an administrator gave you (there is no sign-up).
 - **Your own server**: tap the "Server:" line on the login screen to enter the address of a
   different Finance RAG server. Leave it empty to go back to the standard one. It must be an

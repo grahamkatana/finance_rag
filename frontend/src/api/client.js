@@ -189,3 +189,10 @@ function qs(params) {
 }
 export const fetchQueryEvents = (params) => request(`/audit/queries?${qs(params)}`).then((r) => r.events);
 export const fetchIngestionEvents = (params) => request(`/audit/ingestions?${qs(params)}`).then((r) => r.events);
+
+// ---- admin usage and cost ----
+export const fetchUsage = (days) => request(`/admin/usage/summary?days=${days}`);
+export const fetchPrices = () => request("/admin/usage/prices").then((r) => r.prices);
+export const savePrice = (price) => request("/admin/usage/prices", json("PUT", price));
+export const fetchBalances = () => request("/admin/usage/balances");
+export const saveCredit = (provider, amount_usd) => request("/admin/usage/credits", json("PUT", { provider, amount_usd }));

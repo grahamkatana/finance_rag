@@ -7,11 +7,12 @@ import DocumentsPage from "./components/DocumentsPage";
 import ActivityPage from "./components/ActivityPage";
 import UsersPage from "./components/UsersPage";
 import ReleasesPage from "./components/ReleasesPage";
+import UsagePage from "./components/UsagePage";
 import { fetchMe, hasSession, logout as apiLogout, fetchChats, deleteChat, UnauthorizedError } from "./api/client";
 
 // Each page has its own URL, so refresh, back/forward and shared links work.
 // A chat has one too (/chats/12). nginx serves index.html for any path that isn't a file.
-const PATHS = { ask: "/", documents: "/documents", activity: "/activity", users: "/users", android: "/android" };
+const PATHS = { ask: "/", documents: "/documents", activity: "/activity", users: "/users", android: "/android", usage: "/usage" };
 const urlFor = (page, chatId) => (page === "ask" && chatId ? `/chats/${chatId}` : PATHS[page]);
 
 function parseLocation() {
@@ -97,7 +98,7 @@ export default function App() {
   }
 
   // A non-admin who lands on /users (a shared link, an old bookmark) gets the default page.
-  const page = loc.page === "users" && !user.is_admin ? "ask" : loc.page;
+  const page = (loc.page === "users" || loc.page === "usage") && !user.is_admin ? "ask" : loc.page;
 
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-background md:flex-row">
@@ -145,6 +146,7 @@ export default function App() {
       {page === "documents" && <DocumentsPage user={user} onSessionExpired={handleLogout} />}
       {page === "activity" && <ActivityPage user={user} onSessionExpired={handleLogout} />}
       {page === "users" && <UsersPage currentUser={user} onSessionExpired={handleLogout} />}
+      {page === "usage" && <UsagePage onSessionExpired={handleLogout} />}
       {page === "android" && <ReleasesPage user={user} onSessionExpired={handleLogout} />}
     </div>
   );

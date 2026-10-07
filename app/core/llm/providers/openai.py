@@ -1,6 +1,7 @@
 from typing import AsyncGenerator
 
 from app.core.llm.base import BaseLLM, BaseEmbedder
+from app.features.usage.recorder import estimate_tokens, record
 
 # OpenAI-compatible providers — same API, different base_url
 OPENAI_COMPATIBLE_PROVIDERS = {
@@ -62,6 +63,7 @@ class OpenAICompatibleLLM(BaseLLM):
         )
         self.model = model
         self.provider = provider
+        self.kind = "chat"
 
     async def stream(
         self,
@@ -72,12 +74,17 @@ class OpenAICompatibleLLM(BaseLLM):
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
             stream=True,
+            stream_options={"include_usage": True},
             temperature=0.1,
         )
+        used = None
         async for chunk in response:
-            token = chunk.choices[0].delta.content
-            if token:
-                yield token
+            if getattr(chunk, "usage", None):
+                used = chunk.usage
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+        if used:
+            await record(self.kind, self.provider, self.model, used.prompt_tokens, used.completion_tokens)
 
     async def complete(
         self,
@@ -89,7 +96,12 @@ class OpenAICompatibleLLM(BaseLLM):
             stream=False,
             temperature=0.1,
         )
-        return response.choices[0].message.content or ""
+        text = response.choices[0].message.content or ""
+        if response.usage:
+            await record(self.kind, self.provider, self.model, response.usage.prompt_tokens, response.usage.completion_tokens)
+        else:
+            await record(self.kind, self.provider, self.model, estimate_tokens(prompt), estimate_tokens(text), estimated=True)
+        return text
 
 
 class OpenAIEmbedder(BaseEmbedder):
@@ -128,6 +140,7 @@ class OpenAIEmbedder(BaseEmbedder):
         )
         self.model = model
         self.provider = provider
+        self.kind = "embed"
 
     async def embed_text(
         self,
@@ -137,6 +150,7 @@ class OpenAIEmbedder(BaseEmbedder):
             input=text,
             model=self.model,
         )
+        await self._record(response, [text])
         return response.data[0].embedding
 
     async def embed_batch(
@@ -148,5 +162,12 @@ class OpenAIEmbedder(BaseEmbedder):
             input=texts,
             model=self.model,
         )
+        await self._record(response, texts)
         # Sort by index to preserve order
         return [d.embedding for d in sorted(response.data, key=lambda x: x.index)]
+
+    async def _record(self, response, texts: list[str]) -> None:
+        if getattr(response, "usage", None):
+            await record("embed", self.provider, self.model, response.usage.prompt_tokens)
+        else:
+            await record("embed", self.provider, self.model, sum(estimate_tokens(t) for t in texts), estimated=True)

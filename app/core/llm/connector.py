@@ -1,11 +1,17 @@
 from app.core.llm.base import BaseLLM, BaseEmbedder
 
 
+def _tag(obj, kind):
+    obj.kind = kind  # what the call is for, recorded with its token usage
+    return obj
+
+
 def get_llm(
     provider: str,
     model: str,
     api_key: str = "",
     base_url: str = "",
+    kind: str = "chat",
 ) -> BaseLLM:
     """
     Single entry point for all generation providers.
@@ -20,11 +26,11 @@ def get_llm(
     """
     if provider == "ollama":
         from app.core.llm.providers.ollama import OllamaLLM
-        return OllamaLLM(
+        return _tag(OllamaLLM(
             base_url=base_url or "http://localhost:11434",
             model=model,
             api_key=api_key,
-        )
+        ), kind)
 
     if provider in ("openai", "groq", "deepseek", "grok", "mistral"):
         from app.core.llm.providers.openai import (
@@ -36,19 +42,19 @@ def get_llm(
             base_url or
             OPENAI_COMPATIBLE_PROVIDERS.get(provider, {}).get("base_url")
         )
-        return OpenAICompatibleLLM(
+        return _tag(OpenAICompatibleLLM(
             api_key=api_key,
             model=model,
             provider=provider,
             base_url=resolved_url,
-        )
+        ), kind)
 
     if provider == "gemini":
         from app.core.llm.providers.gemini import GeminiLLM
-        return GeminiLLM(
+        return _tag(GeminiLLM(
             api_key=api_key,
             model=model,
-        )
+        ), kind)
 
     raise ValueError(
         f"Unknown LLM provider: '{provider}'. "

@@ -3,6 +3,7 @@ from typing import AsyncGenerator
 import ollama
 
 from app.core.llm.base import BaseLLM, BaseEmbedder
+from app.features.usage.recorder import estimate_tokens, record
 
 
 class OllamaLLM(BaseLLM):
@@ -12,6 +13,7 @@ class OllamaLLM(BaseLLM):
             headers["Authorization"] = f"Bearer {api_key}"
         self.client = ollama.AsyncClient(host=base_url, headers=headers)
         self.model = model
+        self.kind = "chat"
 
     async def stream(
         self,
@@ -23,10 +25,17 @@ class OllamaLLM(BaseLLM):
             messages=[{"role": "user", "content": prompt}],
             stream=True,
         )
+        used_in = used_out = None
         async for chunk in response:
+            if chunk.done:
+                used_in, used_out = chunk.prompt_eval_count, chunk.eval_count
             token = chunk.message.content
             if token:
                 yield token
+        if used_in is not None:
+            await record(self.kind, "ollama", self.model, used_in, used_out or 0)
+        else:
+            await record(self.kind, "ollama", self.model, estimate_tokens(prompt), 0, estimated=True)
 
     async def complete(
         self,
@@ -37,7 +46,12 @@ class OllamaLLM(BaseLLM):
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
         )
-        return response.message.content or ""
+        text = response.message.content or ""
+        if response.prompt_eval_count is not None:
+            await record(self.kind, "ollama", self.model, response.prompt_eval_count, response.eval_count or 0)
+        else:
+            await record(self.kind, "ollama", self.model, estimate_tokens(prompt), estimate_tokens(text), estimated=True)
+        return text
 
 
 class OllamaEmbedder(BaseEmbedder):

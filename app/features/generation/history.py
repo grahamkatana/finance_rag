@@ -63,6 +63,7 @@ async def standalone_query(history: list[dict], query: str) -> str:
             model=settings.llm_model,
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
+            kind="rewrite",
         )
         raw = await asyncio.wait_for(
             llm.complete(load_prompt("condense").format(history=format_history(history), query=query)),

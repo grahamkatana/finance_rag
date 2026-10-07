@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MessageSquareText, FileText, Activity, Users, LogOut, Plus, MoreHorizontal, Trash2, Smartphone } from "lucide-react";
+import { MessageSquareText, FileText, Activity, Users, LogOut, Plus, MoreHorizontal, Trash2, Smartphone, Wallet } from "lucide-react";
 import { Button } from "./ui/Button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "./ui/DropdownMenu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/Dialog";
@@ -43,7 +43,7 @@ export default function Sidebar({ user, onLogout, activePage, onNavigate, open, 
       </div>
 
       <nav className="shrink-0 space-y-0.5 px-2 py-3">
-        {[...NAV_ITEMS, ...(user?.is_admin ? [{ key: "users", label: "Users", icon: Users }] : [])].map(({ key, label, icon: Icon }) => (
+        {[...NAV_ITEMS, ...(user?.is_admin ? [{ key: "users", label: "Users", icon: Users }, { key: "usage", label: "Usage & cost", icon: Wallet }] : [])].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => onNavigate(key)}
